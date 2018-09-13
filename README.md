@@ -16,7 +16,7 @@ using SymbolServer
 
 path_to_julia_env = "/foo/bar"
 
-s = SymbolServer.SymbolServerProcess(path_to_julia_env)
+s = SymbolServerProcess(path_to_julia_env)
 ````
 
 You can also start a symbol server for the default julia environment if you don't pass any path:
@@ -24,7 +24,7 @@ You can also start a symbol server for the default julia environment if you don'
 ````julia
 using SymbolServer
 
-s = SymbolServer.SymbolServerProcess()
+s = SymbolServerProcess()
 ````
 
 You can then call a number of functions that extract information about packages and other information for that environment.
