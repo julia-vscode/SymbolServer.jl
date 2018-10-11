@@ -1,7 +1,7 @@
 module SymbolServer
 
 export SymbolServerProcess
-export get_packages_in_env, get_doc, import_module
+export getstore
 
 using Serialization
 
@@ -30,6 +30,29 @@ end
 
 # Public API
 
+function getstore(server::SymbolServerProcess)
+    if !isfile(joinpath(@__DIR__, "..", "store", "base.jstore"))
+        store = load_base(server)
+    else
+        store = load(joinpath(@__DIR__, "..", "store", "base.jstore"))
+    end
+
+    pkgs_in_env = get_packages_in_env(server)
+    for pkg in pkgs_in_env
+        pkg_name = pkg[1]
+        if !isfile(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))
+            pstore = load(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))
+        else
+            pstore = load_module(server, pkg)
+        end
+        store[pkg] = pstore
+    end
+
+    store[".importable_mods"] = collect_mods(store)
+
+    return store
+end
+
 function Base.kill(s::SymbolServerProcess)
     kill(s.process)
 end
@@ -43,8 +66,8 @@ function get_packages_in_env(server::SymbolServerProcess)
     end
 end
 
-function get_doc(server::SymbolServerProcess, mod::Symbol)
-    status, payload = request(server, :get_module_doc, mod)
+function load_base(server::SymbolServerProcess)
+    status, payload = request(server, :load_base, nothing)
     if status == :success
         return payload
     else
@@ -52,17 +75,9 @@ function get_doc(server::SymbolServerProcess, mod::Symbol)
     end
 end
 
-function get_doc(server::SymbolServerProcess, mod::Symbol, name::Symbol)
-    status, payload = request(server, :get_doc, (mod=mod, name=name))
-    if status == :success
-        return payload
-    else
-        error(payload)
-    end
-end
 
-function import_module(server::SymbolServerProcess, name::Symbol)
-    status, payload = request(server, :import, name)
+function load_module(server::SymbolServerProcess, name::Symbol)
+    status, payload = request(server, :load_module, name)
     if status == :success
         return payload
     else
