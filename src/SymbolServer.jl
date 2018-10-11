@@ -3,8 +3,6 @@ module SymbolServer
 export SymbolServerProcess
 export getstore
 
-using JSON
-
 using Serialization
 
 mutable struct SymbolServerProcess
@@ -31,19 +29,18 @@ function request(server::SymbolServerProcess, message::Symbol, payload)
 end
 
 function save_store_to_disc(store, file)
-    js = json(store)
     io = open(file, "w")
-    serialize(io, js)
+    serialize(io, store)
     close(io)
 end
 
 function load_store_from_disc(file)
     io = open(file)
-    store = JSON.Parser.parse(deserialize(io))
+    store = deserialize(io)
     close(io)
     for (m,v) in store
         if v isa Dict && haskey(v, ".exported")
-            v[".exported"] = Set{String}(v[".exported"])
+            v[".exported"] = Set{String}(string.(v[".exported"]))
         end
     end
     return store

@@ -84,6 +84,7 @@ function load_package(m, store, v)
         Main.eval(:(import $(Symbol(m))))
         M = getfield(Main, Symbol(m))
         load_module(M, store, v)
+        return store
     catch err
         show(err)
     end
