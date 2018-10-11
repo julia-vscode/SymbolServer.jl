@@ -3,6 +3,8 @@ module SymbolServer
 export SymbolServerProcess
 export getstore
 
+using JSON
+
 using Serialization
 
 mutable struct SymbolServerProcess
@@ -28,13 +30,43 @@ function request(server::SymbolServerProcess, message::Symbol, payload)
     return ret_val
 end
 
+function save_store_to_disc(store, file)
+    js = json(store)
+    io = open(file, "w")
+    serialize(io, js)
+    close(io)
+end
+
+function load_store_from_disc(file)
+    io = open(file)
+    store = JSON.Parser.parse(deserialize(io))
+    close(io)
+    for (m,v) in store
+        if v isa Dict && haskey(v, ".exported")
+            v[".exported"] = Set{String}(v[".exported"])
+        end
+    end
+    return store
+end
+
+function collect_mods(store, mods = [], root = "")
+    for (k,v) in store
+        if v isa Dict && !startswith(first(v)[1], ".")
+            push!(mods, join([root, k], ".")[2:end])
+            collect_mods(v, mods, join([root, k], "."))
+        end
+    end
+    mods
+end
+
 # Public API
 
 function getstore(server::SymbolServerProcess)
     if !isfile(joinpath(@__DIR__, "..", "store", "base.jstore"))
         store = load_base(server)
+        save_store_to_disc(store, joinpath(@__DIR__, "..", "store", "base.jstore"))
     else
-        store = load(joinpath(@__DIR__, "..", "store", "base.jstore"))
+        store = load_store_from_disc(joinpath(@__DIR__, "..", "store", "base.jstore"))
     end
 
     pkgs_in_env = get_packages_in_env(server)
@@ -42,8 +74,9 @@ function getstore(server::SymbolServerProcess)
         pkg_name = pkg[1]
         if !isfile(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))
             pstore = load_module(server, pkg)
+            save_store_to_disc(pstore, joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))
         else
-            pstore = load(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))            
+            pstore = load_store_from_disc(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))            
         end
         store[string(pkg_name)] = pstore
     end

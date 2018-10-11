@@ -1,13 +1,3 @@
-function collect_mods(store, mods = [], root = "")
-    for (k,v) in store
-        if v isa Dict && !startswith(first(v)[1], ".")
-            push!(mods, join([root, k], ".")[2:end])
-            collect_mods(v, mods, join([root, k], "."))
-        end
-    end
-    mods
-end
-
 function read_methods(x)
     map(methods(x)) do m
         Dict("type" => "method",
