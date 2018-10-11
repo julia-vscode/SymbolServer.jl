@@ -76,8 +76,8 @@ function load_base(server::SymbolServerProcess)
 end
 
 
-function load_module(server::SymbolServerProcess, name::Symbol)
-    status, payload = request(server, :load_module, name)
+function load_module(server::SymbolServerProcess, pkg)
+    status, payload = request(server, :load_module, pkg)
     if status == :success
         return payload
     else
