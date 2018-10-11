@@ -45,7 +45,7 @@ function getstore(server::SymbolServerProcess)
         else
             pstore = load(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))            
         end
-        store[pkg] = pstore
+        store[string(pkg_name)] = pstore
     end
 
     store[".importable_mods"] = collect_mods(store)
