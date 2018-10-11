@@ -41,9 +41,9 @@ function getstore(server::SymbolServerProcess)
     for pkg in pkgs_in_env
         pkg_name = pkg[1]
         if !isfile(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))
-            pstore = load(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))
-        else
             pstore = load_module(server, pkg)
+        else
+            pstore = load(joinpath(@__DIR__, "..", "store", "$pkg_name.jstore"))            
         end
         store[pkg] = pstore
     end
