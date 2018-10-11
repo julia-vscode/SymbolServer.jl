@@ -8,14 +8,24 @@ using Serialization
 mutable struct SymbolServerProcess
     process::Base.Process
 
-    function SymbolServerProcess(environment=nothing)
+    function SymbolServerProcess(;environment=nothing, depot=nothing)
         jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
         client_process_script = joinpath(@__DIR__, "clientprocess", "clientprocess_main.jl")
-        
+
+        env_to_use = copy(ENV)
+
+        if depot!==nothing
+            if depot==""
+                delete!(env_to_use, "JULIA_DEPOT_PATH")
+            else
+                env_to_use["JULIA_DEPOT_PATH"] = depot
+            end
+        end
+
         p = if environment===nothing
-            open(Cmd(`$jl_cmd $client_process_script`), read=true, write=true)
+            open(Cmd(`$jl_cmd $client_process_script`, env=env_to_use), read=true, write=true)
         else
-            open(Cmd(`$jl_cmd --project=$environment $client_process_script`, dir=environment), read=true, write=true)
+            open(Cmd(`$jl_cmd --project=$environment $client_process_script`, dir=environment, env=env_to_use), read=true, write=true)
         end
     
         return new(p)
