@@ -27,20 +27,4 @@ using SymbolServer
 s = SymbolServerProcess()
 ````
 
-You can then call a number of functions that extract information about packages and other information for that environment.
-
-``get_packages_in_env`` returns all the packages in that environment:
-
-````julia
-pkgs = get_packages_in_env(s)
-````
-
-``import_module`` loads a given package into the symbol server process and returns a structure with information about the symbols in that module:
-
-````julia
-mod_info = import_module(s, :MyPackage)
-````
-
-``get_doc`` should return doc information for a given symbol (but seems broken right now).
-
-Once you are done with a given symbol server, you need to kill it with ``kill(s)`` to free the resources associated with that symbol server.
+You can then call the ``getstore`` function.
