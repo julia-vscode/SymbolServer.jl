@@ -74,10 +74,11 @@ function load_module(m, pkg, depot, out)
                         if !haskey(depot["packages"], last(dep))
                             depot["packages"][last(dep)] = Dict{String,Any}()
                             load_module(depm, dep, depot, depot["packages"][last(dep)])
-                            out[first(dep)] = last(dep)
+                            out[first(dep)] = first(dep)
                         else
-                            out[first(dep)] = last(dep)
+                            out[first(dep)] = first(dep)
                         end
+                        # the above make reference to the name of the module, may have to change to uuid 
                     catch err
                     end
                 end
