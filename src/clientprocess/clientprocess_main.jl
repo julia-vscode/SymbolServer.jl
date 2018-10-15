@@ -1,4 +1,7 @@
-using Serialization, Pkg, SymbolServer
+pushfirst!(LOAD_PATH, abspath(joinpath(@__DIR__, "..", "..", "..")))
+using SymbolServer
+popfirst!(LOAD_PATH)
+using Serialization, Pkg
 const storedir = abspath(joinpath(@__DIR__, "..", "..", "store"))
 const c = Pkg.Types.Context()
 const depot = Dict("manifest" => c.env.manifest, 
