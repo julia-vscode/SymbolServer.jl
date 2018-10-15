@@ -124,7 +124,6 @@ end
 function import_package(pkg, depot)
     depot["packages"][last(pkg)] = Dict{String,Any}()
     try
-        Main.eval(:(import $(Symbol(first(pkg)))))
         m = getfield(Main, Symbol(first(pkg)))
         load_module(m, pkg, depot, depot["packages"][last(pkg)])
     catch err
@@ -132,6 +131,11 @@ function import_package(pkg, depot)
     return depot["packages"][last(pkg)]
 end
 
+function save_store_to_disc(store, file)
+    io = open(file, "w")
+    serialize(io, store)
+    close(io)
+end
 
 function load_core()
     c = Pkg.Types.Context()    
