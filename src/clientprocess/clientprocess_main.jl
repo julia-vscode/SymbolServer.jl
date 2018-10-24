@@ -1,6 +1,11 @@
-pushfirst!(LOAD_PATH, abspath(joinpath(@__DIR__, "..", "..", "..")))
-using SymbolServer
-popfirst!(LOAD_PATH)
+# pushfirst!(LOAD_PATH, abspath(joinpath(@__DIR__, "..", "..", "..")))
+# using SymbolServer
+# popfirst!(LOAD_PATH)
+module SymbolServer
+using Serialization, Pkg
+include("from_static_lint.jl")
+end
+
 using Serialization, Pkg
 const storedir = abspath(joinpath(@__DIR__, "..", "..", "store"))
 const c = Pkg.Types.Context()

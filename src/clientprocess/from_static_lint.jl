@@ -146,3 +146,8 @@ function load_core()
     return depot
 end
 
+function save_store_to_disc(store, file)
+    io = open(file, "w")
+    serialize(io, store)
+    close(io)
+end

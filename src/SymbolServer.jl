@@ -40,12 +40,6 @@ function request(server::SymbolServerProcess, message::Symbol, payload)
     return ret_val
 end
 
-function save_store_to_disc(store, file)
-    io = open(file, "w")
-    serialize(io, store)
-    close(io)
-end
-
 function load_store_from_disc(file)
     io = open(file)
     store = deserialize(io)
