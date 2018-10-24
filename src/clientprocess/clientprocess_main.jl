@@ -1,6 +1,3 @@
-# pushfirst!(LOAD_PATH, abspath(joinpath(@__DIR__, "..", "..", "..")))
-# using SymbolServer
-# popfirst!(LOAD_PATH)
 module SymbolServer
 using Serialization, Pkg
 include("from_static_lint.jl")
