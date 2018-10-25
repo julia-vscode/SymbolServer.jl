@@ -68,7 +68,7 @@ function load_module(m, pkg, depot, out)
     if haskey(depot["manifest"], first(pkg))
         for pkg1 in depot["manifest"][first(pkg)]
             if pkg1["uuid"] == last(pkg)
-                for dep in pkg1["deps"]
+                for dep in get(pkg1, "deps", [])
                     try
                         depm = getfield(m, Symbol(first(dep)))                    
                         if !haskey(depot["packages"], last(dep))
