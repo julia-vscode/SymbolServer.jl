@@ -78,8 +78,9 @@ function getstore(server::SymbolServerProcess)
     return depot
 end
 
-function Base.kill(s::SymbolServerProcess)
-    kill(s.process)
+function Base.kill(server::SymbolServerProcess)
+    serialize(server.process, (:close, nothing))
+    # kill(s.process)
 end
 
 function get_installed_packages_in_env(server::SymbolServerProcess)
