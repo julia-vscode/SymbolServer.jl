@@ -137,7 +137,7 @@ function load_core()
     c = Pkg.Types.Context()    
     depot = Dict("manifest" => c.env.manifest, 
                  "installed" => c.env.project["deps"],
-                 "packages" => Dict{String,Any}("Base" => Dict(), "Core" => Dict()))
+                 "packages" => Dict{String,Any}("Base" => Dict{String,Any}(), "Core" => Dict{String,Any}()))
 
     load_module(Base, "Base"=>"Base", depot, depot["packages"]["Base"])
     load_module(Core, "Core"=>"Core", depot, depot["packages"]["Core"])
