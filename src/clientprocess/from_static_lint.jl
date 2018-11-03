@@ -1,5 +1,13 @@
 abstract type SymStore end
 
+mutable struct ModuleStore <: SymStore
+    name::String
+    vals::Dict{String,Any}
+    exported::Set{String}
+    doc::String
+end
+ModuleStore(name::String) = ModuleStore(name, Dict{String,Any}(), Set{String}(), "")
+
 struct MethodStore <: SymStore
     file::String
     line::Int
@@ -62,9 +70,8 @@ function collect_params(t, params = [])
 end
 
 function load_module(m, pkg, depot, out)
-    out[".type"] = "module"
-    out[".doc"] = string(Docs.doc(m))
-    out[".exported"] = Set{String}(string.(names(m)))
+    out.doc = string(Docs.doc(m))
+    out.exported = Set{String}(string.(names(m)))
     if haskey(depot["manifest"], first(pkg))
         for pkg1 in depot["manifest"][first(pkg)]
             if pkg1["uuid"] == last(pkg)
@@ -72,11 +79,11 @@ function load_module(m, pkg, depot, out)
                     try
                         depm = getfield(m, Symbol(first(dep)))                    
                         if !haskey(depot["packages"], last(dep))
-                            depot["packages"][last(dep)] = Dict{String,Any}()
+                            depot["packages"][last(dep)] = ModuleStore(first(dep))
                             load_module(depm, dep, depot, depot["packages"][last(dep)])
-                            out[first(dep)] = first(dep)
+                            out.vals[first(dep)] = first(dep)
                         else
-                            out[first(dep)] = first(dep)
+                            out.vals[first(dep)] = first(dep)
                         end
                         # the above make reference to the name of the module, may have to change to uuid 
                     catch err
@@ -92,29 +99,30 @@ function load_module(m, pkg, depot, out)
         else
             x = getfield(m, n)
             if x isa Function
-                out[String(n)] = FunctionStore(read_methods(x), _getdoc(x))
+                out.vals[String(n)] = FunctionStore(read_methods(x), _getdoc(x))
             elseif x isa DataType
                 t, p = collect_params(x)
                 if t.abstract
-                    out[String(n)] = abstractStore(string.(p), _getdoc(x))
+                    out.vals[String(n)] = abstractStore(string.(p), _getdoc(x))
                 elseif t.isbitstype
-                        out[String(n)] = primitiveStore(string.(p), _getdoc(x))
+                        out.vals[String(n)] = primitiveStore(string.(p), _getdoc(x))
                 elseif !(isempty(t.types) || Base.isvatuple(t))
-                        out[String(n)] = structStore(string.(p),
+                        out.vals[String(n)] = structStore(string.(p),
                                                      collect(string.(fieldnames(t))),
                                                      string.(collect(t.types)),
                                                      read_methods(x),
                                                      _getdoc(x))
                 else
-                    out[String(n)] = genericStore("DataType", string.(p), _getdoc(x))
+                    out.vals[String(n)] = genericStore("DataType", string.(p), _getdoc(x))
                 end
             elseif x isa Module && x != m # include reference to current module
                 if parentmodule(x) == m # load non-imported submodules
-                    out[String(n)] = Dict{String,Any}()
-                    load_module(x, pkg, depot, out[String(n)])
+                    
+                    out.vals[String(n)] = ModuleStore(String(n))
+                    load_module(x, pkg, depot, out.vals[String(n)])
                 end
             else
-                out[String(n)] = genericStore(string(typeof(x)), [], _getdoc(x))
+                out.vals[String(n)] = genericStore(string(typeof(x)), [], _getdoc(x))
             end
         end
     end
@@ -122,7 +130,7 @@ function load_module(m, pkg, depot, out)
 end
 
 function import_package(pkg, depot)
-    depot["packages"][last(pkg)] = Dict{String,Any}()
+    depot["packages"][last(pkg)] = ModuleStore(first(pkg))
     try
         Main.eval(:(import $(Symbol(first(pkg)))))
         m = getfield(Main, Symbol(first(pkg)))
@@ -137,11 +145,11 @@ function load_core()
     c = Pkg.Types.Context()    
     depot = Dict("manifest" => c.env.manifest, 
                  "installed" => c.env.project["deps"],
-                 "packages" => Dict{String,Any}("Base" => Dict{String,Any}(), "Core" => Dict{String,Any}()))
+                 "packages" => Dict{String,Any}("Base" => ModuleStore("Base"), "Core" => ModuleStore("Core")))
 
     load_module(Base, "Base"=>"Base", depot, depot["packages"]["Base"])
     load_module(Core, "Core"=>"Core", depot, depot["packages"]["Core"])
-    push!(depot["packages"]["Base"][".exported"], "include")
+    push!(depot["packages"]["Base"].exported, "include")
 
     return depot
 end
