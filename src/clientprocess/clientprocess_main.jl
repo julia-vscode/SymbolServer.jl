@@ -1,4 +1,9 @@
-using Serialization, Pkg, SymbolServer
+module SymbolServer
+using Serialization, Pkg
+include("from_static_lint.jl")
+end
+
+using Serialization, Pkg
 const storedir = abspath(joinpath(@__DIR__, "..", "..", "store"))
 const c = Pkg.Types.Context()
 const depot = Dict("manifest" => c.env.manifest, 
@@ -11,6 +16,8 @@ while true
         if message == :debugmessage
             @info(payload)
             serialize(stdout, (:success, nothing))
+        elseif message == :close
+            break
         elseif message == :get_installed_packages_in_env
             pkgs = c.env.project["deps"]
             serialize(stdout, (:success, pkgs))

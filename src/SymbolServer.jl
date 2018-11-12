@@ -40,12 +40,6 @@ function request(server::SymbolServerProcess, message::Symbol, payload)
     return ret_val
 end
 
-function save_store_to_disc(store, file)
-    io = open(file, "w")
-    serialize(io, store)
-    close(io)
-end
-
 function load_store_from_disc(file)
     io = open(file)
     store = deserialize(io)
@@ -84,8 +78,9 @@ function getstore(server::SymbolServerProcess)
     return depot
 end
 
-function Base.kill(s::SymbolServerProcess)
-    kill(s.process)
+function Base.kill(server::SymbolServerProcess)
+    serialize(server.process, (:close, nothing))
+    # kill(s.process)
 end
 
 function get_installed_packages_in_env(server::SymbolServerProcess)
