@@ -1,14 +1,14 @@
 module SymbolServer
-using Serialization, Pkg
-include("from_static_lint.jl")
-end
 
 using Serialization, Pkg
+include("from_static_lint.jl")
+
 const storedir = abspath(joinpath(@__DIR__, "..", "..", "store"))
 const c = Pkg.Types.Context()
 const depot = Dict("manifest" => c.env.manifest, 
                     "installed" => c.env.project["deps"],
                     "packages" => Dict{String,Any}())
+
 while true
     message, payload = deserialize(stdin)
 
@@ -21,6 +21,9 @@ while true
         elseif message == :get_installed_packages_in_env
             pkgs = c.env.project["deps"]
             serialize(stdout, (:success, pkgs))
+        elseif message == :get_core_packages
+            core_pkgs = load_core()["packages"]
+            serialize(stdout, (:success, core_pkgs))
         elseif message == :get_all_packages_in_env
             pkgs = Dict{String,Vector{String}}(n=>(p->get(p, "uuid", "")).(v) for (n,v) in c.env.manifest)
             serialize(stdout, (:success, pkgs))
@@ -49,4 +52,6 @@ while true
     catch err
         serialize(stdout, (:failure, err))
     end
+end
+
 end
