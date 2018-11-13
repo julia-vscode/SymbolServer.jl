@@ -50,7 +50,7 @@ end
 # Public API
 
 function getstore(server::SymbolServerProcess)
-    depot = deepcopy(corepackages)
+    depot = get_core_packages(server)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     installed_pkgs_in_env = get_installed_packages_in_env(server)
     all_pkgs_in_env = get_all_packages_in_env(server)
@@ -83,6 +83,15 @@ function Base.kill(server::SymbolServerProcess)
     # kill(s.process)
 end
 
+function get_core_packages(server::SymbolServerProcess)
+    status, payload = request(server, :get_core_packages, nothing)
+    if status == :success
+        return payload
+    else
+        error(payload)
+    end
+end
+
 function get_installed_packages_in_env(server::SymbolServerProcess)
     status, payload = request(server, :get_installed_packages_in_env, nothing)
     if status == :success
@@ -109,7 +118,5 @@ function load_package(server::SymbolServerProcess, pkg)
         error(payload)
     end
 end
-
-const corepackages = load_core()["packages"]
 
 end # module
