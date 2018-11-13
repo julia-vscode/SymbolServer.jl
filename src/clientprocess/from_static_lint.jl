@@ -150,6 +150,9 @@ function load_core()
     load_module(Base, "Base"=>"Base", depot, depot["packages"]["Base"])
     load_module(Core, "Core"=>"Core", depot, depot["packages"]["Core"])
     push!(depot["packages"]["Base"].exported, "include")
+    # Add special case macros
+    depot["packages"]["Base"].vals["@."] = depot["packages"]["Base"].vals["@__dot__"]
+    push!(depot["packages"]["Base"].exported, "@.")
 
     return depot
 end
