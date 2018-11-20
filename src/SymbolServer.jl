@@ -44,14 +44,17 @@ function load_store_from_disc(file)
     io = open(file)
     store = deserialize(io)
     close(io)
+    typeof(store) != ModuleStore && @info "WARNING: Type mismatch in loaded store"
     return store
 end
 
 # Public API
 
 function getstore(server::SymbolServerProcess)
-    depot = get_core_packages(server)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
+    depot = Dict{String,ModuleStore}()
+    depot["Base"] = get_core_package(server, storedir, "Base")
+    depot["Core"] = get_core_package(server, storedir, "Core")
     installed_pkgs_in_env = get_installed_packages_in_env(server)
     all_pkgs_in_env = get_all_packages_in_env(server)
 
@@ -83,12 +86,16 @@ function Base.kill(server::SymbolServerProcess)
     # kill(s.process)
 end
 
-function get_core_packages(server::SymbolServerProcess)
-    status, payload = request(server, :get_core_packages, nothing)
-    if status == :success
-        return payload
+function get_core_package(server::SymbolServerProcess, storedir, pkg = "Base")
+    if isfile(joinpath(storedir, "$pkg.jstore"))
+        return load_store_from_disc(joinpath(storedir, "$pkg.jstore"))
     else
-        error(payload)
+        status, payload = request(server, :get_core_packages, nothing)
+        if status == :success
+            return load_store_from_disc(joinpath(storedir, "$pkg.jstore"))
+        else 
+            error("Unable to load $pkg")
+        end
     end
 end
 
