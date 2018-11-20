@@ -53,8 +53,16 @@ end
 function getstore(server::SymbolServerProcess)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     depot = Dict{String,ModuleStore}()
-    depot["Base"] = get_core_package(server, storedir, "Base")
-    depot["Core"] = get_core_package(server, storedir, "Core")
+
+    if !isfile(joinpath(storedir, "Base.jstore")) || !isfile(joinpath(storedir, "Core.jstore"))
+        get_core_package(server)
+    end
+    isfile(joinpath(storedir, "Base.jstore")) || error("Couldn't create Base store")
+    isfile(joinpath(storedir, "Core.jstore")) || error("Couldn't create Core store")
+
+    depot["Base"] = load_store_from_disc(joinpath(storedir, "Base.jstore"))
+    depot["Core"] = load_store_from_disc(joinpath(storedir, "Core.jstore"))
+
     installed_pkgs_in_env = get_installed_packages_in_env(server)
     all_pkgs_in_env = get_all_packages_in_env(server)
 
@@ -86,16 +94,12 @@ function Base.kill(server::SymbolServerProcess)
     # kill(s.process)
 end
 
-function get_core_package(server::SymbolServerProcess, storedir, pkg = "Base")
-    if isfile(joinpath(storedir, "$pkg.jstore"))
-        return load_store_from_disc(joinpath(storedir, "$pkg.jstore"))
-    else
-        status, payload = request(server, :get_core_packages, nothing)
-        if status == :success
-            return load_store_from_disc(joinpath(storedir, "$pkg.jstore"))
-        else 
-            error("Unable to load $pkg")
-        end
+function get_core_package(server::SymbolServerProcess)
+    status, payload = request(server, :get_core_packages, nothing)
+    if status == :success
+        return payload
+    else 
+        error(payload)
     end
 end
 
