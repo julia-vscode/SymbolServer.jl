@@ -95,38 +95,38 @@ function Base.kill(server::SymbolServerProcess)
 end
 
 function get_core_package(server::SymbolServerProcess)
-    status, payload = request(server, :get_core_packages, nothing)
-    if status == :success
-        return payload
+    response = request(server, :get_core_packages, nothing)
+    if response isa Tuple{Symbol,<:Any} && response[1] == :success
+        return response[2]
     else 
-        error(payload)
+        error(response)
     end
 end
 
 function get_installed_packages_in_env(server::SymbolServerProcess)
-    status, payload = request(server, :get_installed_packages_in_env, nothing)
-    if status == :success
-        return payload
-    else
-        error(payload)
+    response = request(server, :get_installed_packages_in_env, nothing)
+    if response isa Tuple{Symbol,<:Any} && response[1] == :success
+        return response[2]
+    else 
+        error(response)
     end
 end
 
 function get_all_packages_in_env(server::SymbolServerProcess)
-    status, payload = request(server, :get_all_packages_in_env, nothing)
-    if status == :success
-        return payload
-    else
-        error(payload)
+    response = request(server, :get_all_packages_in_env, nothing)
+    if response isa Tuple{Symbol,<:Any} && response[1] == :success
+        return response[2]
+    else 
+        error(response)
     end
 end
 
 function load_package(server::SymbolServerProcess, pkg)
-    status, payload = request(server, :load_package, pkg)
-    if status == :success
-        return payload
-    else
-        error(payload)
+    response = request(server, :load_package, pkg)
+    if response isa Tuple{Symbol,<:Any} && response[1] == :success
+        return response[2]
+    else 
+        error(response)
     end
 end
 
