@@ -37,6 +37,7 @@ end
 function request(server::SymbolServerProcess, message::Symbol, payload)
     serialize(server.process, (message, payload))
     ret_val = deserialize(server.process)
+    !(ret_val isa Tuple{Symbol,<:Any}) && error("Invalid response:\n", ret_val)
     return ret_val
 end
 
