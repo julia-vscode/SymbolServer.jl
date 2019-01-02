@@ -9,6 +9,7 @@ include("clientprocess/from_static_lint.jl")
 
 mutable struct SymbolServerProcess
     process::Base.Process
+    err_pipe::Base.Pipe
 
     function SymbolServerProcess(;environment=nothing, depot=nothing)
         jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -24,21 +25,29 @@ mutable struct SymbolServerProcess
             end
         end
 
+        err_pipe = Pipe()
+
         p = if environment===nothing
-            open(Cmd(`$jl_cmd $client_process_script`, env=env_to_use), read=true, write=true)
+            open(pipeline(Cmd(`$jl_cmd $client_process_script`, env=env_to_use), stderr=err_pipe), read=true, write=true)
         else
-            open(Cmd(`$jl_cmd --project=$environment $client_process_script`, dir=environment, env=env_to_use), read=true, write=true)
+            open(pipeline(Cmd(`$jl_cmd --project=$environment $client_process_script`, dir=environment, env=env_to_use), stderr=err_pipe), read=true, write=true)
         end
     
-        return new(p)
+        return new(p, err_pipe)
     end
 end
 
 function request(server::SymbolServerProcess, message::Symbol, payload)
     serialize(server.process, (message, payload))
-    ret_val = deserialize(server.process)
-    !(ret_val isa Tuple{Symbol,<:Any}) && error("Invalid response:\n", ret_val)
-    return ret_val
+    try
+        ret_val = deserialize(server.process)
+
+        !(ret_val isa Tuple{Symbol,<:Any}) && error("Invalid response:\n", ret_val)
+        return ret_val
+    catch err
+        client_err_msg = String(readavailable(server.err_pipe))
+        throw(ErrorException("ERR: $err, STDERR: $client_err_msg"))
+    end
 end
 
 function load_store_from_disc(file)
