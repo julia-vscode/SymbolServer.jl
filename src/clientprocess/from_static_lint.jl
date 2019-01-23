@@ -142,9 +142,9 @@ end
 
 
 function load_core()
-    c = Pkg.Types.Context()    
-    depot = Dict("manifest" => c.env.manifest, 
-                 "installed" => c.env.project["deps"],
+    c = Pkg.Types.Context()
+    depot = Dict("manifest" => c.env.manifest,
+                 "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps),
                  "packages" => Dict{String,Any}("Base" => ModuleStore("Base"), "Core" => ModuleStore("Core")))
 
     load_module(Base, "Base"=>"Base", depot, depot["packages"]["Base"])
