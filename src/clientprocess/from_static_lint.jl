@@ -130,7 +130,7 @@ function load_module(m, pkg, depot, out)
 end
 
 function import_package(pkg, depot)
-    depot["packages"][last(pkg)] = ModuleStore(first(pkg))
+    depot["packages"][string(last(pkg))] = ModuleStore(first(pkg))
     try
         Main.eval(:(import $(Symbol(first(pkg)))))
         m = getfield(Main, Symbol(first(pkg)))
