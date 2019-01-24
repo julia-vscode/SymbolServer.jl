@@ -27,7 +27,11 @@ while true
             SymbolServer.save_store_to_disc(core_pkgs["Core"], joinpath(storedir, "Core.jstore"))
             serialize(stdout, (:success, nothing))
         elseif message == :get_all_packages_in_env
-            pkgs = Dict{String,Vector{String}}(n=>(p->get(p, "uuid", "")).(v) for (n,v) in c.env.manifest)
+            pkgs = if VERSION < v"1.1.0-DEV.857"
+                 Dict{String,Vector{String}}(n=>(p->get(p, "uuid", "")).(v) for (n,v) in c.env.manifest)
+            else
+                 Dict{String,Vector{String}}(v.name=>[string(n),] for (n,v) in c.env.manifest)
+            end
             serialize(stdout, (:success, pkgs))
         elseif message == :load_package
             ostdout = stdout
