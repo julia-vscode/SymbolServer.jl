@@ -9,6 +9,14 @@ const depot = Dict("manifest" => c.env.manifest,
                     "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps),
                     "packages" => Dict{String,Any}())
 
+if Sys.isunix()
+    global const nullfile = "/dev/null"
+elseif Sys.iswindows()
+    global const nullfile = "nul"
+else
+    error("Platform not supported")
+end
+
 while true
     message, payload = deserialize(stdin)
 
@@ -34,15 +42,12 @@ while true
             end
             serialize(stdout, (:success, pkgs))
         elseif message == :load_package
-            ostdout = stdout
-            (outRead, outWrite) = redirect_stdout() # seems necessary incase packages print on startup
-            SymbolServer.import_package(payload, depot)
+            redirect_stdout(open(nullfile, "w")) do # seems necessary incase packages print on startup
+                SymbolServer.import_package(payload, depot)
+            end
             for  (uuid, pkg) in depot["packages"]
                 SymbolServer.save_store_to_disc(pkg, joinpath(storedir, "$uuid.jstore"))
             end
-            close(outWrite)
-            close(outRead)
-            redirect_stdout(ostdout)
             serialize(stdout, (:success, collect(keys(depot["packages"]))))
         elseif message == :load_all
             for pkg in (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps)
