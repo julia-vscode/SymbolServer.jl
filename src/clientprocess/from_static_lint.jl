@@ -72,18 +72,23 @@ end
 function load_module(m, pkg, depot, out)
     out.doc = string(Docs.doc(m))
     out.exported = Set{String}(string.(names(m)))
-    if haskey(depot["manifest"], first(pkg))
-        for pkg1 in depot["manifest"][first(pkg)]
-            if pkg1["uuid"] == last(pkg)
-                for dep in get(pkg1, "deps", [])
+    if haskey(depot["manifest"], pkg_uuid_or_name(pkg))
+        entries = depot["manifest"][pkg_uuid_or_name(pkg)]
+        # In julia 1.0 entries is an Array of Dicts, in 1.1+ it's a PackageEntry
+        isa(entries, Array) || (entries = [entries])
+        for entry in entries
+            uuid = isa(entry, Dict) ? entry["uuid"] : string(entry.other["uuid"])
+            if uuid == pkg_uuid(pkg)
+                deps = isa(entry, Dict) ? get(entry, "deps", []) : entry.deps
+                for dep in deps
                     try
-                        depm = getfield(m, Symbol(first(dep)))                    
-                        if !haskey(depot["packages"], last(dep))
-                            depot["packages"][last(dep)] = ModuleStore(first(dep))
-                            load_module(depm, dep, depot, depot["packages"][last(dep)])
-                            out.vals[first(dep)] = first(dep)
+                        depm = getfield(m, Symbol(pkg_name(dep)))
+                        if !haskey(depot["packages"], pkg_uuid(dep))
+                            depot["packages"][pkg_uuid(dep)] = ModuleStore(pkg_name(dep))
+                            load_module(depm, dep, depot, depot["packages"][pkg_uuid(dep)])
+                            out.vals[pkg_name(dep)] = pkg_name(dep)
                         else
-                            out.vals[first(dep)] = first(dep)
+                            out.vals[pkg_name(dep)] = pkg_name(dep)
                         end
                         # the above make reference to the name of the module, may have to change to uuid
                     catch err
@@ -129,14 +134,14 @@ function load_module(m, pkg, depot, out)
 end
 
 function import_package(pkg, depot)
-    depot["packages"][string(last(pkg))] = ModuleStore(first(pkg))
+    depot["packages"][pkg_uuid(pkg)] = ModuleStore(pkg_name(pkg))
     try
-        Main.eval(:(import $(Symbol(first(pkg)))))
-        m = getfield(Main, Symbol(first(pkg)))
-        load_module(m, pkg, depot, depot["packages"][last(pkg)])
+        Main.eval(:(import $(Symbol(pkg_name(pkg)))))
+        m = getfield(Main, Symbol(pkg_name(pkg)))
+        load_module(m, pkg, depot, depot["packages"][pkg_uuid(pkg)])
     catch err
     end
-    return depot["packages"][last(pkg)]
+    return depot["packages"][pkg_uuid(pkg)]
 end
 
 
@@ -166,3 +171,7 @@ function save_store_to_disc(store, file)
     serialize(io, store)
     close(io)
 end
+
+pkg_name(pkg) = first(pkg)
+pkg_uuid(pkg) = string(last(pkg))
+pkg_uuid_or_name(pkg) = VERSION < v"1.1.0-DEV.857" ? pkg_name(pkg) : pkg_uuid(pkg)
