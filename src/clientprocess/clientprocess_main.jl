@@ -42,8 +42,10 @@ while true
             end
             serialize(stdout, (:success, pkgs))
         elseif message == :load_package
-            redirect_stdout(open(nullfile, "w")) do # seems necessary incase packages print on startup
-                SymbolServer.import_package(payload, depot)
+            open(nullfile, "w") do f
+                redirect_stdout(f) do # seems necessary incase packages print on startup
+                    SymbolServer.import_package(payload, depot)
+                end
             end
             for  (uuid, pkg) in depot["packages"]
                 SymbolServer.save_store_to_disc(pkg, joinpath(storedir, "$uuid.jstore"))
