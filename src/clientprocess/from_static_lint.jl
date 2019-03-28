@@ -142,9 +142,7 @@ end
 
 function load_core()
     c = Pkg.Types.Context()
-    depot = Dict("manifest" => c.env.manifest,
-                 "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps),
-                 "packages" => Dict{String,Any}("Base" => ModuleStore("Base"), "Core" => ModuleStore("Core")))
+    depot = create_depot(c, Dict{String,Any}("Base" => ModuleStore("Base"), "Core" => ModuleStore("Core")))
 
     load_module(Base, "Base"=>"Base", depot, depot["packages"]["Base"])
     load_module(Core, "Core"=>"Core", depot, depot["packages"]["Core"])
@@ -154,6 +152,13 @@ function load_core()
     push!(depot["packages"]["Base"].exported, "@.")
 
     return depot
+end
+
+function create_depot(c, packages)
+    return Dict(
+        "manifest" => Dict(string(uuid)=>pkg for (uuid,pkg) in c.env.manifest),
+        "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : Dict(name=>string(uuid) for (name,uuid) in c.env.project.deps)),
+        "packages" => packages)
 end
 
 function save_store_to_disc(store, file)
