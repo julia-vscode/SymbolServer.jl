@@ -31,7 +31,7 @@ end
 
 struct structStore <: SymStore
     params::Vector{String}
-    fields::Vector{String}    
+    fields::Vector{String}
     ts::Vector{String}
     methods::Vector{MethodStore}
     doc::String
@@ -85,7 +85,7 @@ function load_module(m, pkg, depot, out)
                         else
                             out.vals[first(dep)] = first(dep)
                         end
-                        # the above make reference to the name of the module, may have to change to uuid 
+                        # the above make reference to the name of the module, may have to change to uuid
                     catch err
                     end
                 end
@@ -117,7 +117,6 @@ function load_module(m, pkg, depot, out)
                 end
             elseif x isa Module && x != m # include reference to current module
                 if parentmodule(x) == m # load non-imported submodules
-                    
                     out.vals[String(n)] = ModuleStore(String(n))
                     load_module(x, pkg, depot, out.vals[String(n)])
                 end
