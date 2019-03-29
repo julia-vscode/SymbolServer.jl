@@ -12,7 +12,7 @@ branches:
   only:
   - master
   - /release-.*/
-  - /v(\d+)\.(\d+)\.(\d+)/   
+  - /v(\d+)\.(\d+)\.(\d+)/
 matrix:
   allow_failures:
   - julia: nightly

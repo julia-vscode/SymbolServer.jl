@@ -16,7 +16,7 @@ branches:
   only:
     - master
     - /release-.*/
-    - /v(\d+)\.(\d+)\.(\d+)/   
+    - /v(\d+)\.(\d+)\.(\d+)/
 
 notifications:
   - provider: Email

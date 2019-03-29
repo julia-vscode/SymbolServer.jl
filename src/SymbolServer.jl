@@ -29,7 +29,7 @@ mutable struct SymbolServerProcess
         else
             open(Cmd(`$jl_cmd --project=$environment $client_process_script`, dir=environment, env=env_to_use), read=true, write=true)
         end
-    
+
         return new(p)
     end
 end
@@ -78,7 +78,7 @@ function getstore(server::SymbolServerProcess)
         end
     end
     for (pkg_name, uuids) in all_pkgs_in_env
-        pkg_name in keys(depot) && continue 
+        pkg_name in keys(depot) && continue
         uuid = first(uuids) # will need fix for multiple package versions within an env
         if isfile(joinpath(storedir, "$uuid.jstore"))
             depot[pkg_name] = load_store_from_disc(joinpath(storedir, "$uuid.jstore"))
@@ -86,7 +86,7 @@ function getstore(server::SymbolServerProcess)
             # search for uuid within installed_pkgs_in_env dependencies
         end
     end
-    
+
     return depot
 end
 
@@ -99,7 +99,7 @@ function get_core_package(server::SymbolServerProcess)
     status, payload = request(server, :get_core_packages, nothing)
     if status == :success
         return payload
-    else 
+    else
         error(payload)
     end
 end

@@ -5,9 +5,7 @@ include("from_static_lint.jl")
 
 const storedir = abspath(joinpath(@__DIR__, "..", "..", "store"))
 const c = Pkg.Types.Context()
-const depot = Dict("manifest" => c.env.manifest,
-                    "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps),
-                    "packages" => Dict{String,Any}())
+const depot = create_depot(c, Dict{String,Any}())
 
 if Sys.isunix()
     global const nullfile = "/dev/null"
@@ -27,7 +25,7 @@ while true
         elseif message == :close
             break
         elseif message == :get_installed_packages_in_env
-            pkgs = (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps)
+            pkgs = (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : Dict(name=>string(uuid) for (name,uuid) in c.env.project.deps))
             serialize(stdout, (:success, pkgs))
         elseif message == :get_core_packages
             core_pkgs = load_core()["packages"]
@@ -42,8 +40,10 @@ while true
             end
             serialize(stdout, (:success, pkgs))
         elseif message == :load_package
-            redirect_stdout(open(nullfile, "w")) do # seems necessary incase packages print on startup
-                SymbolServer.import_package(payload, depot)
+            open(nullfile, "w") do f
+                redirect_stdout(f) do # seems necessary incase packages print on startup
+                    SymbolServer.import_package(payload, depot)
+                end
             end
             for  (uuid, pkg) in depot["packages"]
                 SymbolServer.save_store_to_disc(pkg, joinpath(storedir, "$uuid.jstore"))

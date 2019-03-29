@@ -31,7 +31,7 @@ end
 
 struct structStore <: SymStore
     params::Vector{String}
-    fields::Vector{String}    
+    fields::Vector{String}
     ts::Vector{String}
     methods::Vector{MethodStore}
     doc::String
@@ -72,20 +72,25 @@ end
 function load_module(m, pkg, depot, out)
     out.doc = string(Docs.doc(m))
     out.exported = Set{String}(string.(names(m)))
-    if haskey(depot["manifest"], first(pkg))
-        for pkg1 in depot["manifest"][first(pkg)]
-            if pkg1["uuid"] == last(pkg)
-                for dep in get(pkg1, "deps", [])
+    if haskey(depot["manifest"], pkg_uuid_or_name(pkg))
+        entries = depot["manifest"][pkg_uuid_or_name(pkg)]
+        # In julia 1.0 entries is an Array of Dicts, in 1.1+ it's a PackageEntry
+        isa(entries, Array) || (entries = [entries])
+        for entry in entries
+            uuid = isa(entry, Dict) ? entry["uuid"] : string(entry.other["uuid"])
+            if uuid == pkg_uuid(pkg)
+                deps = isa(entry, Dict) ? get(entry, "deps", []) : entry.deps
+                for dep in deps
                     try
-                        depm = getfield(m, Symbol(first(dep)))                    
-                        if !haskey(depot["packages"], last(dep))
-                            depot["packages"][last(dep)] = ModuleStore(first(dep))
-                            load_module(depm, dep, depot, depot["packages"][last(dep)])
-                            out.vals[first(dep)] = first(dep)
+                        depm = getfield(m, Symbol(pkg_name(dep)))
+                        if !haskey(depot["packages"], pkg_uuid(dep))
+                            depot["packages"][pkg_uuid(dep)] = ModuleStore(pkg_name(dep))
+                            load_module(depm, dep, depot, depot["packages"][pkg_uuid(dep)])
+                            out.vals[pkg_name(dep)] = pkg_name(dep)
                         else
-                            out.vals[first(dep)] = first(dep)
+                            out.vals[pkg_name(dep)] = pkg_name(dep)
                         end
-                        # the above make reference to the name of the module, may have to change to uuid 
+                        # the above make reference to the name of the module, may have to change to uuid
                     catch err
                     end
                 end
@@ -117,7 +122,6 @@ function load_module(m, pkg, depot, out)
                 end
             elseif x isa Module && x != m # include reference to current module
                 if parentmodule(x) == m # load non-imported submodules
-                    
                     out.vals[String(n)] = ModuleStore(String(n))
                     load_module(x, pkg, depot, out.vals[String(n)])
                 end
@@ -130,22 +134,20 @@ function load_module(m, pkg, depot, out)
 end
 
 function import_package(pkg, depot)
-    depot["packages"][string(last(pkg))] = ModuleStore(first(pkg))
+    depot["packages"][pkg_uuid(pkg)] = ModuleStore(pkg_name(pkg))
     try
-        Main.eval(:(import $(Symbol(first(pkg)))))
-        m = getfield(Main, Symbol(first(pkg)))
-        load_module(m, pkg, depot, depot["packages"][last(pkg)])
+        Main.eval(:(import $(Symbol(pkg_name(pkg)))))
+        m = getfield(Main, Symbol(pkg_name(pkg)))
+        load_module(m, pkg, depot, depot["packages"][pkg_uuid(pkg)])
     catch err
     end
-    return depot["packages"][last(pkg)]
+    return depot["packages"][pkg_uuid(pkg)]
 end
 
 
 function load_core()
     c = Pkg.Types.Context()
-    depot = Dict("manifest" => c.env.manifest,
-                 "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps),
-                 "packages" => Dict{String,Any}("Base" => ModuleStore("Base"), "Core" => ModuleStore("Core")))
+    depot = create_depot(c, Dict{String,Any}("Base" => ModuleStore("Base"), "Core" => ModuleStore("Core")))
 
     load_module(Base, "Base"=>"Base", depot, depot["packages"]["Base"])
     load_module(Core, "Core"=>"Core", depot, depot["packages"]["Core"])
@@ -157,8 +159,19 @@ function load_core()
     return depot
 end
 
+function create_depot(c, packages)
+    return Dict(
+        "manifest" => Dict(string(uuid)=>pkg for (uuid,pkg) in c.env.manifest),
+        "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : Dict(name=>string(uuid) for (name,uuid) in c.env.project.deps)),
+        "packages" => packages)
+end
+
 function save_store_to_disc(store, file)
     io = open(file, "w")
     serialize(io, store)
     close(io)
 end
+
+pkg_name(pkg) = first(pkg)
+pkg_uuid(pkg) = string(last(pkg))
+pkg_uuid_or_name(pkg) = VERSION < v"1.1.0-DEV.857" ? pkg_name(pkg) : pkg_uuid(pkg)
