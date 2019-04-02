@@ -57,11 +57,20 @@ function safe_load_store(pkg::Pkg.Types.PackageEntry, server::SymbolServerProces
     try 
         server.depot[pkg_name(pkg)] = load_store_from_disc(joinpath(storedir, "$(pkg_uuid(pkg)).jstore"))
         !(server.depot[pkg_name(pkg)] isa ModuleStore) && error("Type mismatch")
+        # Check SHAs match
+        if endswith(server.depot[pkg_name(pkg)].ver, "+") && pkg.path isa String && isdir(pkg.path) && get_dir_sha(pkg.path) != server.depot[pkg_name(pkg)].sha
+            loaded_pkgs = load_package(server, pkg)
+            for pkg1 in loaded_pkgs            
+                if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
+                    safe_load_store(server.context.env.manifest[Base.UUID(pkg1[1])], server, false)
+                end
+            end
+        end
     catch e
         # @warn e
         loaded_pkgs = load_package(server, pkg)
         for pkg1 in loaded_pkgs
-            @info pkg1
+            
             if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
                 safe_load_store(server.context.env.manifest[Base.UUID(pkg1[1])], server, false)
             end
