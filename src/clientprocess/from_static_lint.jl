@@ -5,8 +5,10 @@ mutable struct ModuleStore <: SymStore
     vals::Dict{String,Any}
     exported::Set{String}
     doc::String
+    ver::String
+    sha
 end
-ModuleStore(name::String) = ModuleStore(name, Dict{String,Any}(), Set{String}(), "")
+ModuleStore(name::String) = ModuleStore(name, Dict{String,Any}(), Set{String}(), "", "", nothing)
 
 struct MethodStore <: SymStore
     file::String
@@ -133,17 +135,20 @@ function load_module(m, pkg, depot, out)
     out
 end
 
-function import_package(pkg, depot)
+function import_package(pkg::Pkg.Types.PackageEntry, depot)
     depot["packages"][pkg_uuid(pkg)] = ModuleStore(pkg_name(pkg))
+    depot["packages"][pkg_uuid(pkg)].ver = pkg_ver(pkg)
+    if pkg.path isa String && isdir(pkg.path)
+        depot["packages"][pkg_uuid(pkg)].sha = get_dir_sha(pkg.path)
+    end
     try
         Main.eval(:(import $(Symbol(pkg_name(pkg)))))
         m = getfield(Main, Symbol(pkg_name(pkg)))
-        load_module(m, pkg, depot, depot["packages"][pkg_uuid(pkg)])
+        load_module(m, pkg_name(pkg) => pkg_uuid(pkg), depot, depot["packages"][pkg_uuid(pkg)])
     catch err
     end
     return depot["packages"][pkg_uuid(pkg)]
 end
-
 
 function load_core()
     c = Pkg.Types.Context()
@@ -172,6 +177,25 @@ function save_store_to_disc(store, file)
     close(io)
 end
 
+pkg_name(pkg::Pkg.Types.PackageEntry) = pkg.name
+pkg_uuid(pkg::Pkg.Types.PackageEntry) = pkg.other["uuid"]
+pkg_ver(pkg::Pkg.Types.PackageEntry) = haskey(pkg.other, "version") ? pkg.other["version"] : ""
+
 pkg_name(pkg) = first(pkg)
 pkg_uuid(pkg) = string(last(pkg))
 pkg_uuid_or_name(pkg) = VERSION < v"1.1.0-DEV.857" ? pkg_name(pkg) : pkg_uuid(pkg)
+
+function get_dir_sha(dir::String)
+    sha = zeros(UInt8, 32)
+    for (root, dirs, files) in walkdir(dir)
+        for file in files
+            if endswith(file, ".jl")
+                s1 = open(joinpath(root, file)) do f
+                    sha2_256(f)
+                end
+                sha .+= s1
+            end
+        end
+    end
+    return sha
+end
