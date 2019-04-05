@@ -52,13 +52,13 @@ function load_store_from_disc(file::String)
     return store
 end
 
-function safe_load_store(pkg::Pkg.Types.PackageEntry, server::SymbolServerProcess, allowfail = true)
+function safe_load_store(pkg, server::SymbolServerProcess, allowfail = true)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     try 
         server.depot[pkg_name(pkg)] = load_store_from_disc(joinpath(storedir, "$(pkg_uuid(pkg)).jstore"))
         !(server.depot[pkg_name(pkg)] isa ModuleStore) && error("Type mismatch")
         # Check SHAs match
-        if endswith(server.depot[pkg_name(pkg)].ver, "+") && pkg.path isa String && isdir(pkg.path) && get_dir_sha(pkg.path) != server.depot[pkg_name(pkg)].sha
+        if endswith(server.depot[pkg_name(pkg)].ver, "+") && pkg_path(pkg) isa String && isdir(pkg_path(pkg)) && get_dir_sha(pkg_path(pkg)) != server.depot[pkg_name(pkg)].sha
             loaded_pkgs = load_package(server, pkg)
             for pkg1 in loaded_pkgs            
                 if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
@@ -94,11 +94,18 @@ function getstore(server::SymbolServerProcess)
             error("Couldn't load core stores")
         end
     end
-    
-    for pkg in server.context.env.manifest
-        pkg_name(pkg[2]) in keys(server.depot) && continue
-        safe_load_store(pkg[2], server)
+    if VERSION < v"1.1.0-DEV.857"
+        for pkg in server.context.env.manifest
+            pkg_name(pkg) in keys(server.depot) && continue
+            safe_load_store(pkg, server)
+        end
+    else
+        for pkg in server.context.env.manifest
+            pkg_name(pkg[2]) in keys(server.depot) && continue
+            safe_load_store(pkg[2], server)
+        end
     end
+    
 
     return server.depot
 end
@@ -126,7 +133,7 @@ function get_context(server::SymbolServerProcess)
     end
 end
 
-function load_package(server::SymbolServerProcess, pkg::Pkg.Types.PackageEntry)
+function load_package(server::SymbolServerProcess, pkg)
     status, payload = request(server, :load_package, pkg)
     if status == :success
         return payload

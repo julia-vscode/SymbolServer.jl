@@ -71,11 +71,11 @@ function collect_params(t, params = [])
     end
 end
 
-function load_module(m, pkg, depot, out)
+function load_module(m, pkg::Pair{String,String}, depot, out)
     out.doc = string(Docs.doc(m))
     out.exported = Set{String}(string.(names(m)))
-    if haskey(depot["manifest"], pkg_uuid_or_name(pkg))
-        entries = depot["manifest"][pkg_uuid_or_name(pkg)]
+    if depotmanifesthas(depot, pkg)
+        entries = depotmanifestget(depot, pkg)
         # In julia 1.0 entries is an Array of Dicts, in 1.1+ it's a PackageEntry
         isa(entries, Array) || (entries = [entries])
         for entry in entries
@@ -135,11 +135,11 @@ function load_module(m, pkg, depot, out)
     out
 end
 
-function import_package(pkg::Pkg.Types.PackageEntry, depot)
+function import_package(pkg, depot)
     depot["packages"][pkg_uuid(pkg)] = ModuleStore(pkg_name(pkg))
     depot["packages"][pkg_uuid(pkg)].ver = pkg_ver(pkg)
-    if pkg.path isa String && isdir(pkg.path)
-        depot["packages"][pkg_uuid(pkg)].sha = get_dir_sha(pkg.path)
+    if pkg_path(pkg) isa String && isdir(pkg_path(pkg))
+        depot["packages"][pkg_uuid(pkg)].sha = get_dir_sha(pkg_path(pkg))
     end
     try
         Main.eval(:(import $(Symbol(pkg_name(pkg)))))
@@ -166,8 +166,7 @@ end
 
 function create_depot(c, packages)
     return Dict(
-        "manifest" => Dict(string(uuid)=>pkg for (uuid,pkg) in c.env.manifest),
-        "installed" => (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : Dict(name=>string(uuid) for (name,uuid) in c.env.project.deps)),
+        "manifest" => c.env.manifest,
         "packages" => packages)
 end
 
@@ -176,14 +175,6 @@ function save_store_to_disc(store, file)
     serialize(io, store)
     close(io)
 end
-
-pkg_name(pkg::Pkg.Types.PackageEntry) = pkg.name
-pkg_uuid(pkg::Pkg.Types.PackageEntry) = pkg.other["uuid"]
-pkg_ver(pkg::Pkg.Types.PackageEntry) = haskey(pkg.other, "version") ? pkg.other["version"] : ""
-
-pkg_name(pkg) = first(pkg)
-pkg_uuid(pkg) = string(last(pkg))
-pkg_uuid_or_name(pkg) = VERSION < v"1.1.0-DEV.857" ? pkg_name(pkg) : pkg_uuid(pkg)
 
 function get_dir_sha(dir::String)
     sha = zeros(UInt8, 32)
@@ -198,4 +189,22 @@ function get_dir_sha(dir::String)
         end
     end
     return sha
+end
+
+if VERSION < v"1.1.0-DEV.857"
+    pkg_name(pkg::Pair{String,Any}) = first(pkg)
+    pkg_uuid(pkg::Pair{String,Any}) = get(first(last(pkg)), "uuid", "")
+    pkg_ver(pkg::Pair{String,Any}) = get(first(last(pkg)), "version", "")
+    pkg_path(pkg::Pair{String,Any}) = get(first(last(pkg)), "path", "")
+    pkg_uuid_or_name(pkg) = pkg_name(pkg)
+    depotmanifesthas(depot, pkg::Pair{String,String}) = haskey(depot["manifest"], pkg_name(pkg))
+    depotmanifestget(depot, pkg::Pair{String,String}) = depot["manifest"][pkg_name(pkg)]
+else
+    pkg_name(pkg) = pkg.name
+    pkg_uuid(pkg) = pkg.other["uuid"]
+    pkg_ver(pkg) = get(pkg.other, "version", "")
+    pkg_path(pkg) = pkg.path
+    pkg_uuid_or_name(pkg) = pkg_uuid(pkg)
+    depotmanifesthas(depot, pkg::Pair{String,String}) = haskey(depot["manifest"], pkg_uuid(pkg))
+    depotmanifestget(depot, pkg::Pair{String,String}) = depot["manifest"][pkg_uuid(pkg)]
 end

@@ -42,9 +42,16 @@ while true
             end
             serialize(stdout, (:success, [k=>v.name for (k,v) in depot["packages"] if v.name isa String]))
         elseif message == :load_all
-            for pkg in (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps)
-                SymbolServer.import_package(c.env.manifest[last(pkg)], depot)
+            if VERSION < v"1.1.0-DEV.857"
+                for pkg in c.env.project.deps
+                    SymbolServer.import_package(first(pkg) => c.env.manifest[first(pkg)], depot)
+                end
+            else
+                for pkg in c.env.project["deps"]
+                    SymbolServer.import_package(c.env.manifest[last(pkg)], depot)
+                end
             end
+            
             for (uuid, pkg) in depot["packages"]
                 SymbolServer.save_store_to_disc(pkg, joinpath(storedir, "$uuid.jstore"))
             end

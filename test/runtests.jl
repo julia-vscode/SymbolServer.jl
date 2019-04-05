@@ -8,4 +8,5 @@ using Test
     @test haskey(s.depot, "Base")
     @test haskey(s.depot, "Core")
     @test haskey(s.depot, "SymbolServer")
+    kill(s)
 end
