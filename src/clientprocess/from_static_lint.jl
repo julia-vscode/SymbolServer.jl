@@ -184,7 +184,7 @@ end
 
 function get_dir_sha(dir::String)
     sha = zeros(UInt8, 32)
-    for (root, dirs, files) in walkdir(dir)
+    for (root, dirs, files) in walkdir(dir, onerror = x->nothing)
         for file in files
             if endswith(file, ".jl")
                 s1 = open(joinpath(root, file)) do f
