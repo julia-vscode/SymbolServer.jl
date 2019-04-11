@@ -17,7 +17,6 @@ mutable struct SymbolServerProcess
         client_process_script = joinpath(@__DIR__, "clientprocess", "clientprocess_main.jl")
 
         env_to_use = copy(ENV)
-
         if depot!==nothing
             if depot==""
                 delete!(env_to_use, "JULIA_DEPOT_PATH")
@@ -44,6 +43,16 @@ function request(server::SymbolServerProcess, message::Symbol, payload)
     return ret_val
 end
 
+function get_context(server::SymbolServerProcess)
+    status, payload = request(server, :get_context, nothing)
+    if status == :success
+        server.context = payload
+        return 
+    else
+        error(payload)
+    end
+end
+
 function load_store_from_disc(file::String)
     io = open(file)
     store = deserialize(io)
@@ -52,27 +61,30 @@ function load_store_from_disc(file::String)
     return store
 end
 
-function safe_load_store(pkg, server::SymbolServerProcess, allowfail = true)
+function safe_load_store(pkg::PackageID, server::SymbolServerProcess, allowfail = true)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     try 
-        server.depot[pkg_name(pkg)] = load_store_from_disc(joinpath(storedir, "$(pkg_uuid(pkg)).jstore"))
-        !(server.depot[pkg_name(pkg)] isa ModuleStore) && error("Type mismatch")
+        server.depot[pkg.name] = load_store_from_disc(joinpath(storedir, "$(pkg.uuid).jstore"))
+        !(server.depot[pkg.name] isa ModuleStore) && error("Type mismatch")
         # Check SHAs match
-        if endswith(server.depot[pkg_name(pkg)].ver, "+") && pkg_path(pkg) isa String && isdir(pkg_path(pkg)) && get_dir_sha(pkg_path(pkg)) != server.depot[pkg_name(pkg)].sha
+        pkgpath = pkg_path(pkg, server.context)
+        if endswith(server.depot[pkg.name].ver, "+") && pkgpath isa String && isdir(pkg_path(pkg, server.context)) && get_dir_sha(pkg_path(pkg, server.context)) != server.depot[pkg.name].sha
             loaded_pkgs = load_package(server, pkg)
-            for pkg1 in loaded_pkgs            
+            for pkg1 in loaded_pkgs
                 if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
                     safe_load_store(server.context.env.manifest[Base.UUID(pkg1[1])], server, false)
                 end
             end
         end
     catch e
-        # @warn e
-        loaded_pkgs = load_package(server, pkg)
-        for pkg1 in loaded_pkgs
-            
+        !allowfail && return
+        parents = find_parent(server.context, pkg.uuid)
+        isempty(parents) && return
+        loaded_pkgs = load_package(server, first(parents))
+        # loaded_pkgs = load_package(server, pkg)
+        for pkg1 in loaded_pkgs 
             if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
-                safe_load_store(server.context.env.manifest[Base.UUID(pkg1[1])], server, false)
+                safe_load_store(PackageID(pkg1[2], pkg1[1]), server, false)
             end
         end
     end
@@ -86,7 +98,7 @@ function getstore(server::SymbolServerProcess)
         server.depot["Base"] = load_store_from_disc(joinpath(storedir, "Base.jstore"))
         server.depot["Core"] = load_store_from_disc(joinpath(storedir, "Core.jstore"))
     catch e
-        get_core_package(server)
+        load_core(server)
         try
             server.depot["Base"] = load_store_from_disc(joinpath(storedir, "Base.jstore"))
             server.depot["Core"] = load_store_from_disc(joinpath(storedir, "Core.jstore"))
@@ -94,19 +106,10 @@ function getstore(server::SymbolServerProcess)
             error("Couldn't load core stores")
         end
     end
-    if VERSION < v"1.1.0-DEV.857"
-        for pkg in server.context.env.manifest
-            pkg_name(pkg) in keys(server.depot) && continue
-            safe_load_store(pkg, server)
-        end
-    else
-        for pkg in server.context.env.manifest
-            pkg_name(pkg[2]) in keys(server.depot) && continue
-            safe_load_store(pkg[2], server)
-        end
+    for pkg in get_manifest(server.context)
+        pkg.name in keys(server.depot) && continue
+        safe_load_store(pkg, server)
     end
-    
-
     return server.depot
 end
 
@@ -114,8 +117,8 @@ function Base.kill(server::SymbolServerProcess)
     serialize(server.process, (:close, nothing))
 end
 
-function get_core_package(server::SymbolServerProcess)
-    status, payload = request(server, :get_core_packages, nothing)
+function load_core(server::SymbolServerProcess)
+    status, payload = request(server, :load_core, nothing)
     if status == :success
         return payload
     else
@@ -123,18 +126,8 @@ function get_core_package(server::SymbolServerProcess)
     end
 end
 
-function get_context(server::SymbolServerProcess)
-    status, payload = request(server, :get_context, nothing)
-    if status == :success
-        server.context = payload
-        return 
-    else
-        error(payload)
-    end
-end
-
-function load_package(server::SymbolServerProcess, pkg)
-    status, payload = request(server, :load_package, pkg)
+function load_package(server::SymbolServerProcess, pkg::PackageID)
+    status, payload = request(server, :load_package, (pkg.name, pkg.uuid))
     if status == :success
         return payload
     else
@@ -148,6 +141,15 @@ function load_all(server::SymbolServerProcess)
         return payload
     else
         error(payload)
+    end
+end
+
+function clear_disc_store()
+    storedir = abspath(joinpath(@__DIR__, "..", "store"))
+    for f in readdir(storedir)
+        if endswith(f, ".jstore")
+            rm(joinpath(storedir, f))
+        end
     end
 end
 
