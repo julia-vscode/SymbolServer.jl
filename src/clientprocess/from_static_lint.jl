@@ -270,7 +270,6 @@ function get_manifest(c::Pkg.Types.Context)
 end
 
 function can_access(m::Module, s::Symbol)
-    VERSION < v"1.1.0-DEV.857" || (hasproperty(m, s) && return true)
     try
         return Base.eval(m, :($m.$s))
     catch
