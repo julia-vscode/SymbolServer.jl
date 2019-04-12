@@ -90,7 +90,7 @@ function import_package_names(pkg::PackageID, depot, c, m = nothing)
         depot[pkg.uuid].ver = pkg_ver(pkg, c)
     end
     if pkg_path(pkg, c) isa String && isdir(pkg_path(pkg, c))
-        depot[pkg.uuid].sha = get_dir_sha(pkg_path(pkg, c))
+        depot[pkg.uuid].sha = get_pkg_sha(pkg_path(pkg, c))
     end
     if m isa Module
     elseif Symbol(pkg.name) in names(Main, all = true)
@@ -182,8 +182,11 @@ function save_store_to_disc(store, file)
     close(io)
 end
 
-function get_dir_sha(dir::String)
+function get_pkg_sha(dir::String)
     sha = zeros(UInt8, 32)
+    !isdir(joinpath(dir, "src")) && return sha
+    dir = joinpath(dir, "src")
+    div(Base.Filesystem.uperm(dir), 0x4) == 0x0 && return sha
     for (root, dirs, files) in walkdir(dir, onerror = x->nothing)
         for file in files
             if endswith(file, ".jl")

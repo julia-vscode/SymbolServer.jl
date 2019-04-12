@@ -68,7 +68,7 @@ function safe_load_store(pkg::PackageID, server::SymbolServerProcess, allowfail 
         !(server.depot[pkg.name] isa ModuleStore) && error("Type mismatch")
         # Check SHAs match
         pkgpath = pkg_path(pkg, server.context)
-        if endswith(server.depot[pkg.name].ver, "+") && pkgpath isa String && isdir(pkg_path(pkg, server.context)) && get_dir_sha(pkg_path(pkg, server.context)) != server.depot[pkg.name].sha
+        if endswith(server.depot[pkg.name].ver, "+") && pkgpath isa String && isdir(pkg_path(pkg, server.context)) && get_pkg_sha(pkg_path(pkg, server.context)) != server.depot[pkg.name].sha
             loaded_pkgs = load_package(server, pkg)
             for pkg1 in loaded_pkgs
                 if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
