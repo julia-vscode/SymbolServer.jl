@@ -1,3 +1,5 @@
+using LibGit2
+
 mutable struct Server
    storedir::String
    context::Pkg.Types.Context
@@ -89,8 +91,9 @@ function import_package_names(pkg::PackageID, depot, c, m = nothing)
         depot[pkg.uuid] = ModuleStore(pkg.name)
         depot[pkg.uuid].ver = pkg_ver(pkg, c)
     end
-    if pkg_path(pkg, c) isa String && isdir(pkg_path(pkg, c))
-        depot[pkg.uuid].sha = get_pkg_sha(pkg_path(pkg, c))
+    path = pkg_path(pkg, c)
+    if path isa String && isdir(path) && isgitrepo(path)
+        depot[pkg.uuid].sha = getgithash(path)
     end
     if m isa Module
     elseif Symbol(pkg.name) in names(Main, all = true)
@@ -106,6 +109,12 @@ function import_package_names(pkg::PackageID, depot, c, m = nothing)
     if m isa Module
         get_module_names(m, pkg, depot, depot[pkg.uuid], c)
     end
+    for dep in pkg_deps(pkg, c)
+        depid = PackageID(first(dep), string(last(dep)))
+        if !haskey(depot, depid.uuid)
+            import_package_names(depid, depot, c)
+        end
+    end 
     return depot[pkg.uuid]
 end
 
@@ -180,24 +189,6 @@ function save_store_to_disc(store, file)
     io = open(file, "w")
     serialize(io, store)
     close(io)
-end
-
-function get_pkg_sha(dir::String)
-    sha = zeros(UInt8, 32)
-    !isdir(joinpath(dir, "src")) && return sha
-    dir = joinpath(dir, "src")
-    div(Base.Filesystem.uperm(dir), 0x4) == 0x0 && return sha
-    for (root, dirs, files) in walkdir(dir, onerror = x->nothing)
-        for file in files
-            if endswith(file, ".jl")
-                s1 = open(joinpath(root, file)) do f
-                    sha2_256(f)
-                end
-                sha .+= s1
-            end
-        end
-    end
-    return sha
 end
 
 function pkg_deps(pkg::PackageID, c::Pkg.Types.Context)
@@ -295,4 +286,18 @@ function find_parent(c, uuid::String, out = Set{PackageID}())
         end
     end
     return out
+end
+
+function getgithash(path::String)
+    repo = LibGit2.GitRepo(path)
+    LibGit2.GitHash(LibGit2.GitObject(repo, LibGit2.name(LibGit2.head(repo))))
+end
+
+function isgitrepo(path::String)
+    try
+        LibGit2.GitRepo(path)
+        return true
+    catch err
+        return false
+    end
 end

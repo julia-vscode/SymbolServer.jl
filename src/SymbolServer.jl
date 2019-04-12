@@ -61,18 +61,27 @@ function load_store_from_disc(file::String)
     return store
 end
 
+function shouldreload(pkgid, pkg, c)
+    path = pkg_path(pkgid, c)
+    isempty(path) && return false
+    !endswith(pkg.ver, "+") && return false
+    !isgitrepo(path) && return false
+    return getgithash(path) != pkg.sha
+end
+
 function safe_load_store(pkg::PackageID, server::SymbolServerProcess, allowfail = true)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     try 
         server.depot[pkg.name] = load_store_from_disc(joinpath(storedir, "$(pkg.uuid).jstore"))
         !(server.depot[pkg.name] isa ModuleStore) && error("Type mismatch")
-        # Check SHAs match
-        pkgpath = pkg_path(pkg, server.context)
-        if endswith(server.depot[pkg.name].ver, "+") && pkgpath isa String && isdir(pkg_path(pkg, server.context)) && get_pkg_sha(pkg_path(pkg, server.context)) != server.depot[pkg.name].sha
-            loaded_pkgs = load_package(server, pkg)
-            for pkg1 in loaded_pkgs
+        
+        if shouldreload(pkg, server.depot[pkg.name], server.context)
+            parents = find_parent(server.context, pkg.uuid)
+            isempty(parents) && return
+            loaded_pkgs = load_package(server, first(parents))
+            for pkg1 in loaded_pkgs 
                 if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
-                    safe_load_store(server.context.env.manifest[Base.UUID(pkg1[1])], server, false)
+                    safe_load_store(PackageID(pkg1[2], pkg1[1]), server, false)
                 end
             end
         end
