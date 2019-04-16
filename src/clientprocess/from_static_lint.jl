@@ -180,7 +180,7 @@ function load_core()
     push!(depot["Base"].exported, "include")
     depot["Base"].vals["@."] = depot["Base"].vals["@__dot__"]
     push!(depot["Base"].exported, "@.")
-
+    delete!(depot["Core"].exported, "Main")
     return depot
 end
 
