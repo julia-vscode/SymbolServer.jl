@@ -1,12 +1,9 @@
 module SymbolServer
 
-using Serialization, Pkg
+using Serialization, Pkg, SHA
 include("from_static_lint.jl")
 
-const storedir = abspath(joinpath(@__DIR__, "..", "..", "store"))
-const c = Pkg.Types.Context()
-const depot = create_depot(c, Dict{String,Any}())
-
+server = Server(abspath(joinpath(@__DIR__, "..", "..", "store")), Pkg.Types.Context(), Dict{String,Any}())
 if Sys.isunix()
     global const nullfile = "/dev/null"
 elseif Sys.iswindows()
@@ -17,51 +14,40 @@ end
 
 while true
     message, payload = deserialize(stdin)
-
-    try
-        if message == :debugmessage
-            @info(payload)
-            serialize(stdout, (:success, nothing))
-        elseif message == :close
-            break
-        elseif message == :get_installed_packages_in_env
-            pkgs = (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : Dict(name=>string(uuid) for (name,uuid) in c.env.project.deps))
-            serialize(stdout, (:success, pkgs))
-        elseif message == :get_core_packages
-            core_pkgs = load_core()["packages"]
-            SymbolServer.save_store_to_disc(core_pkgs["Base"], joinpath(storedir, "Base.jstore"))
-            SymbolServer.save_store_to_disc(core_pkgs["Core"], joinpath(storedir, "Core.jstore"))
-            serialize(stdout, (:success, nothing))
-        elseif message == :get_all_packages_in_env
-            pkgs = if VERSION < v"1.1.0-DEV.857"
-                 Dict{String,Vector{String}}(n=>(p->get(p, "uuid", "")).(v) for (n,v) in c.env.manifest)
-            else
-                 Dict{String,Vector{String}}(v.name=>[string(n),] for (n,v) in c.env.manifest)
+    if message == :debugmessage
+        @info(payload)
+        serialize(stdout, (:success, nothing))
+    elseif message == :close
+        break
+    elseif message == :get_context
+        serialize(stdout, (:success, server.context))
+    elseif message == :load_core
+        core_pkgs = load_core()
+        SymbolServer.save_store_to_disc(core_pkgs["Base"], joinpath(server.storedir, "Base.jstore"))
+        SymbolServer.save_store_to_disc(core_pkgs["Core"], joinpath(server.storedir, "Core.jstore"))
+        serialize(stdout, (:success, nothing))
+    elseif message == :load_package
+        pkg = PackageID(first(payload), last(payload))
+        open(nullfile, "w") do f
+            redirect_stdout(f) do # seems necessary incase packages print on startup
+                SymbolServer.import_package_names(pkg, server.depot, server.context)
             end
-            serialize(stdout, (:success, pkgs))
-        elseif message == :load_package
-            open(nullfile, "w") do f
-                redirect_stdout(f) do # seems necessary incase packages print on startup
-                    SymbolServer.import_package(payload, depot)
-                end
-            end
-            for  (uuid, pkg) in depot["packages"]
-                SymbolServer.save_store_to_disc(pkg, joinpath(storedir, "$uuid.jstore"))
-            end
-            serialize(stdout, (:success, collect(keys(depot["packages"]))))
-        elseif message == :load_all
-            for pkg in (VERSION < v"1.1.0-DEV.857" ? c.env.project["deps"] : c.env.project.deps)
-                SymbolServer.import_package(pkg, depot)
-            end
-            for  (uuid, pkg) in depot["packages"]
-                SymbolServer.save_store_to_disc(pkg, joinpath(storedir, "$uuid.jstore"))
-            end
-            serialize(stdout, (:success, collect(keys(depot["packages"]))))
-        else
-            serialize(stdout, (:failure, nothing))
         end
-    catch err
-        serialize(stdout, (:failure, err))
+        for  (uuid, pkg) in server.depot
+            SymbolServer.save_store_to_disc(pkg, joinpath(server.storedir, "$uuid.jstore"))
+        end
+        serialize(stdout, (:success, [k=>v.name for (k,v) in server.depot if v.name isa String]))
+    elseif message == :load_all
+        for pkg in SymbolServer.context_deps(server.context)
+            SymbolServer.import_package_names(PackageID(first(pkg), string(last(pkg))), server.depot, server.context)
+        end
+        
+        for (uuid, pkg) in server.depot
+            SymbolServer.save_store_to_disc(pkg, joinpath(server.storedir, "$uuid.jstore"))
+        end
+        serialize(stdout, (:success, [k=>v.name for (k,v) in server.depot if v.name isa String]))
+    else
+        serialize(stdout, (:failure, nothing))
     end
 end
 
