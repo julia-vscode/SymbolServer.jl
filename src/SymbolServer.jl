@@ -76,7 +76,7 @@ function safe_load_store(pkg::PackageID, server::SymbolServerProcess, allowfail 
         !(server.depot[pkg.name] isa ModuleStore) && error("Type mismatch")
         
         if shouldreload(pkg, server.depot[pkg.name], server.context)
-            parents = find_parent(server.context, pkg.uuid)
+            parents = Base.UUID(pkg.uuid) in keys(server.context.env.manifest) ? [pkg] : find_parent(server.context, pkg.uuid)
             isempty(parents) && return
             loaded_pkgs = load_package(server, first(parents))
             for pkg1 in loaded_pkgs 
@@ -87,17 +87,16 @@ function safe_load_store(pkg::PackageID, server::SymbolServerProcess, allowfail 
         end
     catch e
         !allowfail && return
-        parents = find_parent(server.context, pkg.uuid)
+        parents = Base.UUID(pkg.uuid) in keys(server.context.env.manifest) ? [pkg] : find_parent(server.context, pkg.uuid)
         isempty(parents) && return
         loaded_pkgs = load_package(server, first(parents))
-        # loaded_pkgs = load_package(server, pkg)
         for pkg1 in loaded_pkgs 
             if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
                 safe_load_store(PackageID(pkg1[2], pkg1[1]), server, false)
             end
         end
     end
-end
+end# loaded_pkgs = load_package(server, pkg)
 
 # Public API
 
