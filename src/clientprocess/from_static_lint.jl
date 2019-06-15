@@ -60,7 +60,14 @@ end
 
 
 function _getdoc(x)
-    string(Docs.doc(x))
+    # Packages can add methods to Docs.doc, and those can have a bug,
+    # and we don't want that to kill the symbol server process
+    try
+        return string(Docs.doc(x))
+    catch err
+        @warn "Couldn't retrieve docs."
+        return ""
+    end
 end
 
 function read_methods(x)
@@ -114,7 +121,7 @@ function import_package_names(pkg::PackageID, depot, c, m = nothing)
         if !haskey(depot, depid.uuid)
             import_package_names(depid, depot, c)
         end
-    end 
+    end
     return depot[pkg.uuid]
 end
 
@@ -164,7 +171,7 @@ function get_module_names(m::Module, pkg::PackageID, depot, out::ModuleStore, c:
                 import_package_names(depid, depot, c, dep_module)
             end
         end
-    end 
+    end
 end
 
 
@@ -176,7 +183,7 @@ function load_core()
         get_module_names(m, PackageID(string(m), ""), depot, depot[string(m)], c)
     end
 
-    # Add special cases 
+    # Add special cases
     push!(depot["Base"].exported, "include")
     depot["Base"].vals["@."] = depot["Base"].vals["@__dot__"]
     push!(depot["Base"].exported, "@.")
@@ -268,8 +275,8 @@ function can_access(m::Module, s::Symbol)
         return Base.eval(m, :($m.$s))
     catch
         return nothing
-    end 
-    
+    end
+
 end
 
 function find_parent(c, uuid::String, out = Set{PackageID}())
