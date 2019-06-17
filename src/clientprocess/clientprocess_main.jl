@@ -39,7 +39,11 @@ while true
         serialize(stdout, (:success, [k=>v.name for (k,v) in server.depot if v.name isa String]))
     elseif message == :load_all
         for pkg in SymbolServer.context_deps(server.context)
-            SymbolServer.import_package_names(PackageID(first(pkg), string(last(pkg))), server.depot, server.context)
+            open(nullfile, "w") do f
+                redirect_stdout(f) do # seems necessary incase packages print on startup
+                    SymbolServer.import_package_names(PackageID(first(pkg), string(last(pkg))), server.depot, server.context)
+                end
+            end
         end
         
         for (uuid, pkg) in server.depot
