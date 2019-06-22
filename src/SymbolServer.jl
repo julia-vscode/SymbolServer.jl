@@ -11,6 +11,7 @@ mutable struct SymbolServerProcess
     process::Base.Process
     context::Union{Nothing,Pkg.Types.Context}
     depot::Dict{String,ModuleStore}
+    process_stderr::IOBuffer
 
     function SymbolServerProcess(;environment=nothing, depot=nothing)
         jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -25,12 +26,14 @@ mutable struct SymbolServerProcess
             end
         end
 
+        stderr_for_client_process = IOBuffer()
+
         p = if environment===nothing
-            open(Cmd(`$jl_cmd $client_process_script`, env=env_to_use), read=true, write=true)
+            open(pipeline(Cmd(`$jl_cmd $client_process_script`, env=env_to_use), stderr=stderr_for_client_process), read=true, write=true)
         else
-            open(Cmd(`$jl_cmd --project=$environment $client_process_script`, dir=environment, env=env_to_use), read=true, write=true)
+            open(pipeline(Cmd(`$jl_cmd --project=$environment $client_process_script`, dir=environment, env=env_to_use), stderr=stderr_for_client_process), read=true, write=true)
         end
-        ssp = new(p, nothing, Dict())
+        ssp = new(p, nothing, Dict(), stderr_for_client_process)
         get_context(ssp)
         return ssp
     end
@@ -38,7 +41,16 @@ end
 
 function request(server::SymbolServerProcess, message::Symbol, payload)
     serialize(server.process, (message, payload))
-    ret_val = deserialize(server.process)
+    ret_val = try
+        deserialize(server.process)
+    catch err
+        stderr_from_client_process = String(take!(server.process_stderr))
+        
+        complete_error_message = string(sprint(showerror, err), "\n\nstderr from client process:\n\n", stderr_from_client_process)
+
+        error(complete_error_message)
+    end
+
     !(ret_val isa Tuple{Symbol,<:Any}) && error("Invalid response:\n", ret_val)
     return ret_val
 end
