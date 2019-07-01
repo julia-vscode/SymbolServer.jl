@@ -135,15 +135,15 @@ function get_module_names(m::Module, pkg::PackageID, depot, out::ModuleStore, c:
         if Base.isdeprecated(m, n)
         else
             x = getfield(m, n)
+            t, p = collect_params(x)
             if x isa Function
                 out.vals[String(n)] = FunctionStore(read_methods(x), _getdoc(x))
-            elseif x isa DataType
-                t, p = collect_params(x)
+            elseif t isa DataType
                 if t.abstract
                     out.vals[String(n)] = abstractStore(string.(p), _getdoc(x))
                 elseif t.isbitstype
                         out.vals[String(n)] = primitiveStore(string.(p), _getdoc(x))
-                elseif !(isempty(t.types) || Base.isvatuple(t))
+                elseif !(isempty(t.types) || Base.isvatuple(t)) || t.mutable
                         out.vals[String(n)] = structStore(string.(p),
                                                      collect(string.(fieldnames(t))),
                                                      string.(collect(t.types)),
