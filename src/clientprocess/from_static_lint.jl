@@ -58,7 +58,6 @@ struct genericStore <: SymStore
     doc::String
 end
 
-
 function _getdoc(x)
     # Packages can add methods to Docs.doc, and those can have a bug,
     # and we don't want that to kill the symbol server process
@@ -71,14 +70,27 @@ function _getdoc(x)
 end
 
 function read_methods(x)
-    map(methods(x)) do m
+    ms = methods(x)
+    map(ms) do m
         path = isabspath(String(m.file)) ? String(m.file) : Base.find_source_file(String(m.file))
-        if path == nothing
+        if path === nothing
             path = ""
+        end
+        args = Base.arg_decl_parts(m)[2][2:end]
+        if isdefined(ms.mt, :kwsorter)
+            kws = Base.kwarg_decl(m, typeof(ms.mt.kwsorter))
+            for kw in kws
+                push!(args, (string(kw), ".KW"))
+            end
+        end
+        for i = 1:length(args)
+            if isempty(args[i][2])
+                args[i] = (args[i][1], "Any")
+            end
         end
         MethodStore(path,
                     m.line,
-                    Base.arg_decl_parts(m)[2][2:end])
+                    args)
     end
 end
 
@@ -188,9 +200,21 @@ function load_core()
     depot["Base"].vals["@."] = depot["Base"].vals["@__dot__"]
     push!(depot["Base"].exported, "@.")
     delete!(depot["Core"].exported, "Main")
+    # Add built-ins
+    add_builtin_methods(depot["Core"])
     return depot
 end
 
+function add_builtin_methods(core_dep::ModuleStore)
+    builtins = (split("=== typeof sizeof <: isa typeassert throw tuple getfield setfield! fieldtype nfields isdefined arrayref arrayset arraysize applicable invoke apply_type _apply _expr svec"))
+    for f in builtins
+        if haskey(core_dep.vals, f)
+            push!(core_dep.vals[f].methods, MethodStore("built-in", 0, [("args...", "Any")]))
+        else
+            core_dep.vals[f] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("args...", "Any")])], _getdoc(getfield(Core, Symbol(f))))
+        end
+    end
+end
 
 function save_store_to_disc(store, file)
     io = open(file, "w")
