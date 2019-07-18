@@ -11,7 +11,7 @@ mutable struct SymbolServerProcess
     process::Base.Process
     context::Union{Nothing,Pkg.Types.Context}
     depot::Dict{String,ModuleStore}
-    process_stderr::IOBuffer
+    process_stderr::Union{IOBuffer,Nothing}
 
     function SymbolServerProcess(;environment=nothing, depot=nothing)
         jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -26,7 +26,7 @@ mutable struct SymbolServerProcess
             end
         end
 
-        stderr_for_client_process = IOBuffer()
+        stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
 
         p = if environment===nothing
             open(pipeline(Cmd(`$jl_cmd $client_process_script`, env=env_to_use), stderr=stderr_for_client_process), read=true, write=true)
@@ -44,11 +44,18 @@ function request(server::SymbolServerProcess, message::Symbol, payload)
     ret_val = try
         deserialize(server.process)
     catch err
-        stderr_from_client_process = String(take!(server.process_stderr))
-        
-        complete_error_message = string(sprint(showerror, err), "\n\nstderr from client process:\n\n", stderr_from_client_process)
+        # Only Julia 1.1 and newer support capturing stderr into an IOBuffer
+        if server.process_stderr!==nothing
+            stderr_from_client_process = String(take!(server.process_stderr))
 
-        error(complete_error_message)
+            complete_error_message = string(sprint(showerror, err), "\n\nstderr from client process:\n\n", stderr_from_client_process)
+
+            error(complete_error_message)
+        else
+            complete_error_message = string(sprint(showerror, err), "\n\nCouldn't capture stderr from client process on julia 1.0.\n\n")
+
+            error(complete_error_message)
+        end
     end
 
     !(ret_val isa Tuple{Symbol,<:Any}) && error("Invalid response:\n", ret_val)
@@ -59,7 +66,7 @@ function get_context(server::SymbolServerProcess)
     status, payload = request(server, :get_context, nothing)
     if status == :success
         server.context = payload
-        return 
+        return
     else
         error(payload)
     end
@@ -83,15 +90,15 @@ end
 
 function safe_load_store(pkg::PackageID, server::SymbolServerProcess, allowfail = true)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
-    try 
+    try
         server.depot[pkg.name] = load_store_from_disc(joinpath(storedir, "$(pkg.uuid).jstore"))
         !(server.depot[pkg.name] isa ModuleStore) && error("Type mismatch")
-        
+
         if shouldreload(pkg, server.depot[pkg.name], server.context)
             parents = Base.UUID(pkg.uuid) in keys(server.context.env.manifest) ? [pkg] : find_parent(server.context, pkg.uuid)
             isempty(parents) && return
             loaded_pkgs = load_package(server, first(parents))
-            for pkg1 in loaded_pkgs 
+            for pkg1 in loaded_pkgs
                 if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
                     safe_load_store(PackageID(pkg1[2], pkg1[1]), server, false)
                 end
@@ -102,7 +109,7 @@ function safe_load_store(pkg::PackageID, server::SymbolServerProcess, allowfail 
         parents = Base.UUID(pkg.uuid) in keys(server.context.env.manifest) ? [pkg] : find_parent(server.context, pkg.uuid)
         isempty(parents) && return
         loaded_pkgs = load_package(server, first(parents))
-        for pkg1 in loaded_pkgs 
+        for pkg1 in loaded_pkgs
             if haskey(server.context.env.manifest, Base.UUID(pkg1[1]))
                 safe_load_store(PackageID(pkg1[2], pkg1[1]), server, false)
             end
