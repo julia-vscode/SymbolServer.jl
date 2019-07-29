@@ -5,26 +5,37 @@
 [![Build status](https://ci.appveyor.com/api/projects/status/w8e8hru20r5f5ra2/branch/master?svg=true)](https://ci.appveyor.com/project/julia-vscode/symbolserver-jl/branch/master)
 [![codecov.io](http://codecov.io/github/julia-vscode/SymbolServer.jl/coverage.svg?branch=master)](http://codecov.io/github/julia-vscode/SymbolServer.jl?branch=master)
 
-SymbolServer is a helper package for LanguageServer.jl.
+SymbolServer is a helper package for LanguageServer.jl that provides information about internal and exported variables of packages (without loading them). A package's symbol information is initially loaded in an external process but then stored on disc for (quick loading) future use.
 
-## Overview
+Documentation for working with Julia environments is available [here](https://github.com/JuliaLang/Pkg.jl).
 
-You can start a new symbol server for a given julia environment like this:
 
-````julia
-using SymbolServer
+## API
 
-path_to_julia_env = "/foo/bar"
+```julia
+SymbolServerProcess(path_to_env)
+```
+Launches a server process (with given enviroment) and retrieves the active context. This client side process (this) contains a depot of retrieved packages.
 
-s = SymbolServerProcess(path_to_julia_env)
-````
+```julia
+change_env(ssp::SymbolServerProcess, env_path::String)
+```
+Activates a new environment on the server. The new active context must then be retrieved separately.
 
-You can also start a symbol server for the default julia environment if you don't pass any path:
+```julia
+get_context(ssp::SymbolServerProcess)
+```
+Retrieves the active context (environment) from the server.
 
-````julia
-using SymbolServer
 
-s = SymbolServerProcess()
-````
+```julia
+load_manifest_packages(ssp)
+load_project_packages(ssp)
+```
+Load all packages from the current active environments manifest or project into the client
+side depot.
 
-You can then call the ``getstore`` function.
+
+
+
+
