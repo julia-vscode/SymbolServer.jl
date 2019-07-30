@@ -170,12 +170,12 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path =
     pe_name = packagename(c, uuid)
     old_env_path = env_path
     m = try
-        Main.eval(:(import $(Symbol(pe_name))))
-        m = getfield(Main, Symbol(pe_name))
+        LoadingBay.eval(:(import $(Symbol(pe_name))))
+        m = getfield(LoadingBay, Symbol(pe_name))
         depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
     catch err
         try
-            m = tryaccess(getfield(Main, Symbol(packagename(c, first(find_parent(c, uuid))))), Symbol(pe_name))
+            m = tryaccess(getfield(LoadingBay, Symbol(packagename(c, first(find_parent(c, uuid))))), Symbol(pe_name))
             depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
         catch err1
             @info "Failed to load $uuid [$(pe_name)] from $env_path"

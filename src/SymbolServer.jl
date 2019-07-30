@@ -1,5 +1,6 @@
 module SymbolServer
-
+module LoadingBay
+end
 export SymbolServerProcess, change_env, load_manifest_packages, load_project_packages, get_context, getstore
 
 using Serialization, Pkg, SHA
@@ -149,6 +150,7 @@ function load_package_cache(ssp::SymbolServerProcess, uuid::UUID)
                 deserialize(io)
             end
             if version(pe) != store.ver || (store.ver isa String && endswith(store.ver, "+") && sha_pkg(pe) != store.sha)
+                cache_package(ssp, uuid)
             end
             ssp.depot[pe_name] = store.val
         catch err

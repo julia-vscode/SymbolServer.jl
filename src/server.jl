@@ -1,4 +1,6 @@
 module SymbolServer
+module LoadingBay
+end
 using Serialization, Pkg, SHA
 using Base: UUID
 @static if VERSION < v"1.1"
@@ -51,8 +53,8 @@ while true
         server.context = Pkg.Types.Context()
         serialize(stdout, (:success, nothing))
     elseif message == :debugmessage
-        @info(payload)
-        serialize(stdout, (:success, nothing))
+        out = string(eval(Meta.parse(payload)))
+        serialize(stdout, (:success, out))
     elseif message == :close
         break
     else
