@@ -10,6 +10,21 @@ struct PackageRef{N}
     name::NTuple{N,String}
 end
 
+struct TypeRef{N}
+    name::String
+    mod::PackageRef{N}
+end
+TypeRef(t::TypeVar) = TypeRef("Any", PackageRef(("Core",)))
+TypeRef(t::Union) = TypeRef("Any", PackageRef(("Core",)))
+TypeRef(t::Type{T}) where T = TypeRef("Any", PackageRef(("Core",)))
+function TypeRef(t::DataType)
+    pm = String.(split(string(Base.parentmodule(t)), "."))
+    pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm))))
+end
+# Base.show(io, tr::TypeRef{T}) where T = print(io, "TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
+# Base.display(tr::TypeRef{T}) where T = print("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
+Base.string(tr::TypeRef{T}) where T = string("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
+
 abstract type SymStore end
 mutable struct ModuleStore <: SymStore
     name::String
@@ -41,7 +56,7 @@ end
 struct DataTypeStore <: SymStore
     params::Vector{String}
     fields::Vector{String}
-    ts::Vector{String}
+    ts::Vector{TypeRef}
     methods::Vector{MethodStore}
     doc::String
 end
@@ -142,7 +157,7 @@ function get_module(c::Pkg.Types.Context, m::Module)
                 elseif isdefined(t, :types) && !isempty(t.types) && !Base.isvatuple(t)
                     out.vals[String(n)] = DataTypeStore(string.(p),
                                                      collect(string.(fieldnames(t))),
-                                                     string.(collect(t.types)),
+                                                     TypeRef.(collect(t.types)),
                                                      read_methods(x),
                                                      _getdoc(x))
                 else
