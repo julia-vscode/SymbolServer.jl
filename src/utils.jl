@@ -181,3 +181,21 @@ end
 function sha_pkg(pe::PackageEntry)
     path(pe) isa String && isdir(path(pe)) && isdir(joinpath(path(pe), "src")) ? sha2_256_dir(joinpath(path(pe), "src")) : nothing
 end
+
+function _lookup(tr::PackageRef{N}, depot::Dict{String,ModuleStore}) where N
+    if haskey(depot, tr.name[1])
+        if N == 1
+            return depot[tr.name[1]]
+        else
+            return _lookup(tr, depot[tr.name[1]], 2)
+        end
+    end
+end
+
+function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
+    if i < N && haskey(m.vals, tr.name[i])
+        _lookup(tr, m.vals[tr.name[i]], i + 1)
+    elseif i == N && haskey(m.vals, tr.name[i])
+        return m.vals[tr.name[i]]
+    end
+end
