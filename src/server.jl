@@ -38,10 +38,15 @@ while true
                 end
             end
         end
-        out = String[] # list of saved caches
+        out = Tuple{String,String,Bool,Bool, Bool}[] # list of saved caches
         for  (uuid, pkg) in server.depot
+            overwrote = isfile(joinpath(server.storedir, "$(string(uuid)).jstore"))
             write_cache(uuid, pkg)
-            push!(out, string(uuid))
+
+            isloaded = can_access(LoadingBay, Symbol(packagename(server.context, uuid))) isa Module
+            issaved = isfile(joinpath(server.storedir, "$(string(uuid)).jstore"))
+            
+            push!(out, (string(uuid), packagename(server.context, uuid), isloaded, isloaded, overwrote))
         end
         serialize(stdout, (:success, out))
     elseif message == :change_env

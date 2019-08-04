@@ -182,7 +182,7 @@ end
 
 function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path = dirname(c.env.manifest_file))
     uuid in keys(depot) && return true
-    # pe = manifest(c)[uuid]
+
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
     old_env_path = env_path

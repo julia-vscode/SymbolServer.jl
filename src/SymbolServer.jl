@@ -48,10 +48,9 @@ mutable struct SymbolServerProcess
 end
 
 function Base.show(io::IO, ssp::SymbolServerProcess)
-    println(io, "SymbolServerProcess with $(length(ssp.depot)) packages")
-    for (k, v) in ssp.depot
-        println(io, isempty(v.vals) ? " ** " : "    ", k)
-    end
+    println(io, "SymbolServerProcess with $(length(ssp.depot)) ($(sum(!isempty(v.vals) for (k,v) in ssp.depot))) packages")
+    
+    print(join(sort!([string(isempty(v.vals) ? " ** " : "    ", k) for (k, v) in ssp.depot], lt = (a,b) ->a[5:end]<b[5:end]), "\n"))
 end
 
 
@@ -99,7 +98,7 @@ function load_project_packages(ssp::SymbolServerProcess)
 end
 
 function getstore(ssp::SymbolServerProcess)
-    load_manifest_packages(ssp)
+    load_project_packages(ssp)
     return ssp.depot
 end
 
@@ -137,8 +136,9 @@ Tries to load the on-disc stored cache for a package (uuid). Attempts to generat
 function load_package_cache(ssp::SymbolServerProcess, uuid::UUID)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     cache_path = joinpath(storedir, string(uuid, ".jstore"))
-    # if !(uuid in keys(manifest(ssp.context)))
+    
     if !isinmanifest(ssp.context, uuid)
+        @info "Tried to load $uuid but failed to find it in the manifest."
         return 
     end
 
@@ -150,10 +150,18 @@ function load_package_cache(ssp::SymbolServerProcess, uuid::UUID)
                 deserialize(io)
             end
             if version(pe) != store.ver || (store.ver isa String && endswith(store.ver, "+") && sha_pkg(pe) != store.sha)
+                @info "$pe_name changed, updating cache."
                 cache_package(ssp, uuid)
+                store = open(cache_path) do io
+                    deserialize(io)
+                end
             end
             ssp.depot[pe_name] = store.val
+            for dep in deps(pe)
+                load_dependency_cache(ssp, packageuuid(dep))
+            end
         catch err
+            @info "Tried to load $pe_name but failed to load from disc, re-caching."
             if err isa UndefVarError && err.var in (:structStore, :abstractStore)
                 @info "Package cache pre-v3.0"
             end
@@ -164,6 +172,43 @@ function load_package_cache(ssp::SymbolServerProcess, uuid::UUID)
         @info "$(pe_name) not stored on disc"
         cache_package(ssp, uuid)
     end
+end
+
+function load_dependency_cache(ssp::SymbolServerProcess, uuid::UUID)
+    storedir = abspath(joinpath(@__DIR__, "..", "store"))
+    cache_path = joinpath(storedir, string(uuid, ".jstore"))
+    if !isinmanifest(ssp.context, uuid)
+        @info "Tried to load $uuid cache as a dependency but failed to find it in the manifest."
+        return 
+    end
+    pe = frommanifest(ssp.context, uuid)
+    pe_name = packagename(ssp.context, uuid)
+    haskey(ssp.depot, pe_name) && return
+    @info "loading dependency $pe_name"
+    if isfile(cache_path)
+        try
+            store = open(cache_path) do io
+                deserialize(io)
+            end
+            if version(pe) != store.ver || (store.ver isa String && endswith(store.ver, "+") && sha_pkg(pe) != store.sha)
+                @info "Tried to load $pe_name cache as a dependency but failed."
+            end
+            ssp.depot[pe_name] = store.val
+            for dep in deps(pe)
+                load_dependency_cache(ssp, packageuuid(dep))
+            end
+        catch err
+            if err isa UndefVarError && err.var in (:structStore, :abstractStore)
+                @info "Package cache pre-v3.0"
+            end
+            # rm(cache_path)
+            # cache_package(ssp, uuid)
+        end
+    else
+        @info "Tried to load $pe_name cache as a dependency but no file found."
+        # cache_package(ssp, uuid)
+    end
+
 end
 
 load_package_cache(ssp::SymbolServerProcess, uuid::String) = load_package_cache(ssp, UUID(uuid))
@@ -189,8 +234,10 @@ function cache_package(ssp::SymbolServerProcess, uuid::Vector{UUID})
     union!(ssp.caching_packages, uuid)
     status, payload = request(ssp, :cache_package, string.(uuid))
     if status == :success
-        delete!(ssp.caching_packages, uuid)
-        append!(ssp.newly_cached_packages, UUID.(payload))
+        for u in uuid
+            delete!(ssp.caching_packages, u)
+        end
+        append!(ssp.newly_cached_packages, UUID.(first(p) for p in payload))
         return payload
     else
         error(payload)
@@ -205,6 +252,7 @@ function update(ssp::SymbolServerProcess)
     for uuid in ssp.newly_cached_packages
         load_package_cache(ssp, uuid)
     end
+    empty!(ssp.newly_cached_packages)
 end
 
 function clear_disc_store()
