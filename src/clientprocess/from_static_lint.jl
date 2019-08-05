@@ -137,6 +137,14 @@ function import_package_names(pkg::PackageID, depot, c, m = nothing)
     return depot[pkg.uuid]
 end
 
+function _fieldtypes(t)
+    try
+        return fieldtypes(t)
+    catch e
+        return ()
+    end
+end
+
 function get_module_names(m::Module, pkg::PackageID, depot, out::ModuleStore, c::Pkg.Types.Context)
     out.doc = string(Docs.doc(m))
     out.exported = Set{String}(string.(names(m)))
@@ -155,10 +163,10 @@ function get_module_names(m::Module, pkg::PackageID, depot, out::ModuleStore, c:
                     out.vals[String(n)] = abstractStore(string.(p), _getdoc(x))
                 elseif t.isbitstype
                         out.vals[String(n)] = primitiveStore(string.(p), _getdoc(x))
-                elseif !(isempty(t.types) || Base.isvatuple(t)) || t.mutable
+                elseif !(Base.isvatuple(t) || isempty(_fieldtypes(t))) || t.mutable
                         out.vals[String(n)] = structStore(string.(p),
                                                      collect(string.(fieldnames(t))),
-                                                     string.(collect(t.types)),
+                                                     string.(collect(_fieldtypes(t))),
                                                      read_methods(x),
                                                      _getdoc(x))
                 else
