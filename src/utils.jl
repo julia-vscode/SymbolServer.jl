@@ -41,6 +41,7 @@ function find_parent(c::Pkg.Types.Context, uuid::UUID, out = Set{UUID}())
 end
 
 @static if VERSION < v"1.1"
+    is_stdlib(a, b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u,p) in manifest(context))
 
@@ -87,6 +88,7 @@ end
         return nothing
     end
 else
+    const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
     isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u,p) in manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = haskey(manifest(context), uuid)
 
@@ -156,7 +158,7 @@ function change_env(c, pe)
     if path(pe) isa String 
         env_path = path(pe)
         Pkg.API.activate(env_path)
-    elseif !Pkg.Types.is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) &&!isempty(Pkg.API.dir(packagename(pe))))
+    elseif !is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) &&!isempty(Pkg.API.dir(packagename(pe))))
         env_path = Pkg.API.dir(packagename(pe))
         Pkg.API.activate(env_path)
     end

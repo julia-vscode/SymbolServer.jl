@@ -21,8 +21,7 @@ function TypeRef(t::DataType)
     pm = String.(split(string(Base.parentmodule(t)), "."))
     pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm))))
 end
-# Base.show(io, tr::TypeRef{T}) where T = print(io, "TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
-# Base.display(tr::TypeRef{T}) where T = print("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
+
 Base.string(tr::TypeRef{T}) where T = string("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
 
 abstract type SymStore end
@@ -181,32 +180,35 @@ function get_module(c::Pkg.Types.Context, m::Module)
 end
 
 function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path = dirname(c.env.manifest_file))
-    uuid in keys(depot) && return true
+    if uuid in keys(depot)
+        return 
+    end
 
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
+    pid = Base.PkgId(uuid, pe_name)
     old_env_path = env_path
-    m = try
-        LoadingBay.eval(:(import $(Symbol(pe_name))))
+    
+    if pid in keys(Base.loaded_modules)
+        LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(LoadingBay, Symbol(pe_name))
-        depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
-    catch err
-        try
-            m = tryaccess(getfield(LoadingBay, Symbol(packagename(c, first(find_parent(c, uuid))))), Symbol(pe_name))
-            depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
-        catch err1
-            @info "Failed to load $uuid [$(pe_name)] from $env_path"
+    else
+        m = try
+            LoadingBay.eval(:(import $(Symbol(pe_name))))
+            m = getfield(LoadingBay, Symbol(pe_name))
+        catch e
             depot[uuid] = Package(pe_name, ModuleStore(pe_name), version(pe), uuid, sha_pkg(pe))
             return false
         end
-    end
+    end    
+    depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
 
     # Dependencies
     for pkg in deps(pe)
         if path(pe) isa String 
             env_path = path(pe)
             Pkg.API.activate(env_path)
-        elseif !Pkg.Types.is_stdlib(c, uuid) && ((Pkg.API.dir(pe_name) isa String) && !isempty(Pkg.API.dir(pe_name)))
+        elseif !(is_stdlib(c, uuid)) && ((Pkg.API.dir(pe_name) isa String) && !isempty(Pkg.API.dir(pe_name)))
             env_path = Pkg.API.dir(pe_name)
             Pkg.API.activate(env_path)
         end
@@ -215,4 +217,18 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path =
 
     Pkg.API.activate(old_env_path)
     return true
+end
+
+function cache_packages_and_save(c::Pkg.Types.Context, uuids::Vector{UUID})    
+    storedir = abspath(joinpath(@__DIR__, "..", "store"))
+    depot = Dict()
+    for uuid in uuids
+        cache_package(c, uuid, depot)
+    end
+    for (uuid, pkg) in depot
+        open(joinpath(storedir, "$uuid.jstore"), "w") do io
+            serialize(io, pkg)
+        end
+    end
+    return [p[1] for p in depot]
 end
