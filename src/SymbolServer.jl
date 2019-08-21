@@ -47,11 +47,12 @@ function disc_load(context::Pkg.Types.Context, uuid::UUID, depot = Dict(), repor
             store = open(cache_path) do io
                 deserialize(io)
             end
-            if version(pe) != store.ver || (store.ver isa String && endswith(store.ver, "+") && sha_pkg(pe) != store.sha)
+            if version(pe) != store.ver || ((store.ver isa String && endswith(store.ver, "+") || (store.ver isa VersionNumber && (!isempty(store.ver.build) || !isempty(store.ver.prerelease)))) && sha_pkg(pe) != store.sha)
                 @info "$pe_name changed, updating cache."
                 report[uuid] = "outdated"
+            else
+                depot[pe_name] = store.val
             end
-            depot[pe_name] = store.val
         catch err
             report[uuid] = "other"
             rm(cache_path)
