@@ -154,10 +154,10 @@ function get_module(c::Pkg.Types.Context, m::Module)
             elseif t isa DataType
                 if t.abstract || t.isbitstype
                     out.vals[String(n)] = DataTypeStore(string.(p), [], [], [], _getdoc(x))
-                elseif isdefined(t, :types) && !isempty(t.types) && !Base.isvatuple(t)
+                elseif !isempty(Base.datatype_fieldtypes(t)) && !Base.isvatuple(t)
                     out.vals[String(n)] = DataTypeStore(string.(p),
                                                      collect(string.(fieldnames(t))),
-                                                     TypeRef.(collect(t.types)),
+                                                     TypeRef.(collect(Base.datatype_fieldtypes(t))),
                                                      read_methods(x),
                                                      _getdoc(x))
                 else
