@@ -39,7 +39,7 @@ mutable struct SymbolServerProcess
         p = if environment === nothing
             open(pipeline(Cmd(`$jl_cmd --startup-file=no --history-file=no $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
         else
-            open(pipeline(Cmd(`$jl_cmd --startup-file=no --history-file=no --project=$environment $server_script`, dir = environment, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+            open(pipeline(Cmd(`$jl_cmd --startup-file=no --history-file=no --project=$environment $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
         end
         ssp = new(p, nothing, deepcopy(stdlibs), stderr_for_client_process, Set{UUID}(), UUID[])
         get_context(ssp)
