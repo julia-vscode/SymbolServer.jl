@@ -1,4 +1,8 @@
 module SymbolServer
+
+conn = stdout
+(outRead, outWrite) = redirect_stdout()
+
 module LoadingBay
 end
 using Serialization, Pkg, SHA
@@ -29,14 +33,10 @@ end
 while true
     message, payload = deserialize(stdin)
     if message == :get_context
-        serialize(stdout, (:success, server.context))
+        serialize(conn, (:success, server.context))
     elseif message == :cache_package
         for uuid in payload
-            open(nullfile, "w") do f
-                redirect_stdout(f) do # seems necessary incase packages print on startup
-                    cache_package(server.context, UUID(uuid), server.depot)
-                end
-            end
+            cache_package(server.context, UUID(uuid), server.depot)
         end
         out = Tuple{String,String,Bool,Bool, Bool}[] # list of saved caches
         for  (uuid, pkg) in server.depot
@@ -45,25 +45,21 @@ while true
 
             isloaded = can_access(LoadingBay, Symbol(packagename(server.context, uuid))) isa Module
             issaved = isfile(joinpath(server.storedir, "$(string(uuid)).jstore"))
-            
+
             push!(out, (string(uuid), packagename(server.context, uuid), isloaded, isloaded, overwrote))
         end
-        serialize(stdout, (:success, out))
+        serialize(conn, (:success, out))
     elseif message == :change_env
-        open(nullfile, "w") do f
-            redirect_stdout(f) do # seems necessary incase packages print on startup
-                Pkg.API.activate(payload)
-            end
-        end
+        Pkg.API.activate(payload)
         server.context = Pkg.Types.Context()
-        serialize(stdout, (:success, nothing))
+        serialize(conn, (:success, nothing))
     elseif message == :debugmessage
         out = string(eval(Meta.parse(payload)))
-        serialize(stdout, (:success, out))
+        serialize(conn, (:success, out))
     elseif message == :close
         break
     else
-        serialize(stdout, (:failure, nothing))
+        serialize(conn, (:failure, nothing))
     end
 end
 end
