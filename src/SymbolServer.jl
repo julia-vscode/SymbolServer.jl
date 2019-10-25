@@ -17,7 +17,7 @@ mutable struct SymbolServerProcess
     context::Union{Nothing,Pkg.Types.Context}
     depot::Dict{String,ModuleStore}
     process_stderr::Union{IOBuffer,Nothing}
-    
+
     caching_packages::Set{UUID}
     newly_cached_packages::Vector{UUID}
 
@@ -37,9 +37,9 @@ mutable struct SymbolServerProcess
         stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
 
         p = if environment === nothing
-            open(pipeline(Cmd(`$jl_cmd $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+            open(pipeline(Cmd(`$jl_cmd --startup-file=no --history-file=no $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
         else
-            open(pipeline(Cmd(`$jl_cmd --project=$environment $server_script`, dir = environment, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+            open(pipeline(Cmd(`$jl_cmd --startup-file=no --history-file=no --project=$environment $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
         end
         ssp = new(p, nothing, deepcopy(stdlibs), stderr_for_client_process, Set{UUID}(), UUID[])
         get_context(ssp)
@@ -49,7 +49,7 @@ end
 
 function Base.show(io::IO, ssp::SymbolServerProcess)
     println(io, "SymbolServerProcess with $(length(ssp.depot)) ($(sum(!isempty(v.vals) for (k,v) in ssp.depot))) packages")
-    
+
     print(join(sort!([string(isempty(v.vals) ? " ** " : "    ", k) for (k, v) in ssp.depot], lt = (a,b) ->a[5:end]<b[5:end]), "\n"))
 end
 
@@ -136,10 +136,10 @@ Tries to load the on-disc stored cache for a package (uuid). Attempts to generat
 function load_package_cache(ssp::SymbolServerProcess, uuid::UUID)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     cache_path = joinpath(storedir, string(uuid, ".jstore"))
-    
+
     if !isinmanifest(ssp.context, uuid)
         @info "Tried to load $uuid but failed to find it in the manifest."
-        return 
+        return
     end
 
     pe = frommanifest(ssp.context, uuid)
@@ -179,7 +179,7 @@ function load_dependency_cache(ssp::SymbolServerProcess, uuid::UUID)
     cache_path = joinpath(storedir, string(uuid, ".jstore"))
     if !isinmanifest(ssp.context, uuid)
         @info "Tried to load $uuid cache as a dependency but failed to find it in the manifest."
-        return 
+        return
     end
     pe = frommanifest(ssp.context, uuid)
     pe_name = packagename(ssp.context, uuid)
@@ -218,11 +218,11 @@ function Base.kill(server::SymbolServerProcess)
 end
 """
     cache_package(ssp, uuid::Union{UUID, Vector{UUID}})
-Sends a request to the server to cache a package or collection of packages. 
+Sends a request to the server to cache a package or collection of packages.
 Requested packages are added to the list `ssp.caching_packages` to prevent the
-sending multiple requests for the same package. 
-    
-The server returns a list of packages that it has loaded and adds it to 
+sending multiple requests for the same package.
+
+The server returns a list of packages that it has loaded and adds it to
 `ssp.newly_cached_packages`. This list should be used to `update` the client side
 depot `ssp.depot`.
 """
