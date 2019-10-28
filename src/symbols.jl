@@ -1,5 +1,11 @@
 using LibGit2
 
+@static if VERSION < v"1.2"
+    is_stdlib(ctx::Pkg.Types.Context, uuid::UUID) = uuid in keys(ctx.stdlibs)
+else
+    const is_stdlib = Pkg.Types.is_stdlib
+end
+
 mutable struct Server
     storedir::String
     context::Pkg.Types.Context
@@ -167,7 +173,7 @@ function get_module(c::Pkg.Types.Context, m::Module)
                 n == :Main && continue
                 if parentmodule(x) == m # load non-imported submodules
                     out.vals[String(n)] = get_module(c, x)
-                    
+
                 else
                     pm = String.(split(string(Base.parentmodule(x)), "."))
                     out.vals[String(n)] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
@@ -203,10 +209,10 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path =
 
     # Dependencies
     for pkg in deps(pe)
-        if path(pe) isa String 
+        if path(pe) isa String
             env_path = path(pe)
             Pkg.API.activate(env_path)
-        elseif !Pkg.Types.is_stdlib(c, uuid) && ((Pkg.API.dir(pe_name) isa String) && !isempty(Pkg.API.dir(pe_name)))
+        elseif !is_stdlib(c, uuid) && ((Pkg.API.dir(pe_name) isa String) && !isempty(Pkg.API.dir(pe_name)))
             env_path = Pkg.API.dir(pe_name)
             Pkg.API.activate(env_path)
         end
