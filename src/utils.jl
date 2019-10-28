@@ -12,13 +12,13 @@ project(c::Pkg.Types.Context) = c.env.project
 
 """
     isinproject(context, package::Union{String,UUID})
-Checks whether a package is in the dependencies of a given context, e.g. is directly loadable. 
+Checks whether a package is in the dependencies of a given context, e.g. is directly loadable.
 """
 function isinproject end
 
 """
     isinmanifest(context, package::Union{String,UUID})
-Checks whether a package is in the manifest of a given context, e.g. is either directly loadable or is a dependency of an loadable package. 
+Checks whether a package is in the manifest of a given context, e.g. is either directly loadable or is a dependency of an loadable package.
 """
 function isinmanifest end
 
@@ -47,7 +47,7 @@ end
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
     isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n,u) in deps(project(context)))
 
-    function packageuuid(c::Pkg.Types.Context, name::String) 
+    function packageuuid(c::Pkg.Types.Context, name::String)
         for pkg in manifest(c)
             if first(pkg) == name
                 return UUID(last(pkg)[1]["uuid"])
@@ -56,7 +56,7 @@ end
     end
     packageuuid(pkg::Pair{Any,Any}) = last(pkg) isa String ? UUID(last(pkg)) : UUID(first(last(pkg))["uuid"])
     packageuuid(pkg::Pair{String,Any}) = last(pkg) isa String ? UUID(last(pkg)) : UUID(first(last(pkg))["uuid"])
-    
+
     function packagename(c::Pkg.Types.Context, uuid)
         for (n,p) in c.env.manifest
             if get(first(p), "uuid", "") == string(uuid)
@@ -77,7 +77,7 @@ end
     deps(pe::PackageEntry) = get(pe[1], "deps", Dict{String,Any}())
     path(pe::PackageEntry) = get(pe[1], "path", nothing)
     version(pe::PackageEntry) = get(pe[1], "version", nothing)
-    
+
     function frommanifest(c::Pkg.Types.Context, uuid)
         for (n,p) in c.env.manifest
             if get(first(p), "uuid", "") == string(uuid)
@@ -92,8 +92,8 @@ else
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
     isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n,u) in deps(project(context)))
-    
-    function packageuuid(c::Pkg.Types.Context, name::String) 
+
+    function packageuuid(c::Pkg.Types.Context, name::String)
         for pkg in manifest(c)
             if last(pkg).name == name
                 return first(pkg)
@@ -153,10 +153,10 @@ function can_access(m::Module, s::Symbol)
 end
 
 function change_env(c, pe)
-    if path(pe) isa String 
+    if path(pe) isa String
         env_path = path(pe)
         Pkg.API.activate(env_path)
-    elseif !Pkg.Types.is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) &&!isempty(Pkg.API.dir(packagename(pe))))
+    elseif !is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) &&!isempty(Pkg.API.dir(packagename(pe))))
         env_path = Pkg.API.dir(packagename(pe))
         Pkg.API.activate(env_path)
     end
