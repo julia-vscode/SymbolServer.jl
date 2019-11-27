@@ -22,24 +22,6 @@ Checks whether a package is in the manifest of a given context, e.g. is either d
 """
 function isinmanifest end
 
-"""
-    find_parent(c, package::Union{String,UUID})
-Finds all loadable packages for which `package` is a dependency.
-"""
-find_parent(c::Pkg.Types.Context, name::String, out = Set{UUID}()) = find_parent(c, packageuuid(c, name), out)
-function find_parent(c::Pkg.Types.Context, uuid::UUID, out = Set{UUID}())
-    for pkg in manifest(c)
-        if uuid in values(deps(packageuuid(pkg), c))
-            if isinproject(c, packagename(pkg))
-                push!(out, packageuuid(pkg))
-            else
-                find_parent(c, packageuuid(pkg), out)
-            end
-        end
-    end
-    return out
-end
-
 @static if VERSION < v"1.1"
     is_stdlib(a, b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
@@ -154,15 +136,6 @@ function can_access(m::Module, s::Symbol)
     end
 end
 
-function change_env(c, pe)
-    if path(pe) isa String 
-        env_path = path(pe)
-        Pkg.API.activate(env_path)
-    elseif !is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) &&!isempty(Pkg.API.dir(packagename(pe))))
-        env_path = Pkg.API.dir(packagename(pe))
-        Pkg.API.activate(env_path)
-    end
-end
 
 function sha2_256_dir(path, sha = sha = zeros(UInt8, 32))
     (uperm(path) & 0x04) != 0x04 && return
@@ -200,4 +173,39 @@ function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
     elseif i == N && haskey(m.vals, tr.name[i])
         return m.vals[tr.name[i]]
     end
+end
+
+# pulled from reflection.jl, returns 
+function hasfields(@nospecialize t)
+    if t isa UnionAll || t isa Union
+        t = Base.argument_datatype(t)
+        if t === nothing
+            return false
+        end
+        t = t::DataType
+    elseif t == Union{}
+        return false
+    end
+    if !(t isa DataType)
+        return false
+    end
+    if t.name === Base.NamedTuple_typename
+        names, types = t.parameters
+        if names isa Tuple
+            return true
+        end
+        if types isa DataType && types <: Tuple
+            return fieldcount(types)
+        end
+        abstr = true
+    else
+        abstr = t.abstract || (t.name === Tuple.name && Base.isvatuple(t))
+    end
+    if abstr
+        return false
+    end
+    if isdefined(t, :types)
+        return true
+    end
+    return true
 end

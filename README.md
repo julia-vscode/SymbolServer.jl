@@ -17,10 +17,6 @@ SymbolServerProcess(path_to_env)
 ```
 Launches a server process (with given enviroment) and retrieves the active context. This client side process (this) contains a depot of retrieved packages.
 
-```julia
-change_env(ssp::SymbolServerProcess, env_path::String)
-```
-Activates a new environment on the server. The new active context must then be retrieved separately.
 
 ```julia
 get_context(ssp::SymbolServerProcess)

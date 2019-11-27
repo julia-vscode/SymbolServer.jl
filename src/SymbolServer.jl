@@ -32,7 +32,7 @@ function disc_load(context::Pkg.Types.Context, uuid::UUID, depot = Dict(), repor
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     cache_path = joinpath(storedir, string(uuid, ".jstore"))
 
-    if !isinmanifest(context, uuid) && !isinproject(context, uuid)
+    if !isinmanifest(context, uuid) #|| !isinproject(context, uuid)
         @info "Tried to load $uuid but failed to find it in the manifest."
         return
     end
