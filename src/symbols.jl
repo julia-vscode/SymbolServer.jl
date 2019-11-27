@@ -180,7 +180,7 @@ function get_module(c::Pkg.Types.Context, m::Module)
             elseif t isa DataType
                 out.vals[String(n)] = DataTypeStore(string.(p),
                                 hasfields(t) ? collect(string.(fieldnames(t))) : String[],
-                                isdefined(t, :types) ? TypeRef.(collect(t.types)) : TypeRef[],
+                                !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[],
                                 t == Vararg ? [] : read_methods(x),
                                 _getdoc(x))
             elseif x isa Module && x != m # include reference to current module
