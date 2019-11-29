@@ -4,7 +4,7 @@
 [![Build Status](https://travis-ci.org/julia-vscode/SymbolServer.jl.svg?branch=master)](https://travis-ci.org/julia-vscode/SymbolServer.jl)
 [![codecov.io](http://codecov.io/github/julia-vscode/SymbolServer.jl/coverage.svg?branch=master)](http://codecov.io/github/julia-vscode/SymbolServer.jl?branch=master)
 
-SymbolServer is a helper package for LanguageServer.jl that provides information about internal and exported variables of packages (without loading them). A package's symbol information is initially loaded in an external process but then stored on disc for (quick loading) future use.
+SymbolServer is a helper package for LanguageServer.jl that provides information about internal and exported variables of packages (without loading them). A `SymbolServerProcess` is intened to run either in the main or a parallel process (in which case the package must be loaded using `@everywhere using SymbolServer`).
 
 Documentation for working with Julia environments is available [here](https://github.com/JuliaLang/Pkg.jl).
 
@@ -12,29 +12,25 @@ Documentation for working with Julia environments is available [here](https://gi
 ## API
 
 ```julia
-SymbolServerProcess(path_to_env)
+SymbolServerProcess(c = Pkg.Types.Context())
 ```
-Launches a server process (with given enviroment) and retrieves the active context. This client side process (this) contains a depot of retrieved packages.
+Launches a server process (with given `Context`). 
 
 ```julia
-change_env(ssp::SymbolServerProcess, env_path::String)
+disc_load(context, uuid/name, depot = Dict(), report = [])
 ```
-Activates a new environment on the server. The new active context must then be retrieved separately.
-
-```julia
-get_context(ssp::SymbolServerProcess)
-```
-Retrieves the active context (environment) from the server.
+Attemps to load a package (by uuid or name) from `SymbolServer`'s disc store into `depot::Dict` . A report `Dict` is returned alongside the depot indicating packages (listed by UUID) that could not be loaded.
 
 
 ```julia
-load_manifest_packages(ssp)
-load_project_packages(ssp)
+disc_load_project(ssp)
 ```
-Load all packages from the current active environments manifest or project into the client
-side depot.
+Load from the disc store all packages in the active environments project. 
 
-
+```julia
+clear_disc_store()
+```
+Clear SymbolServer's disc store.
 
 
 

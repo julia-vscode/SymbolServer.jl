@@ -1,11 +1,5 @@
 using LibGit2
 
-@static if VERSION < v"1.2"
-    is_stdlib(ctx::Pkg.Types.Context, uuid::UUID) = uuid in keys(ctx.stdlibs)
-else
-    const is_stdlib = Pkg.Types.is_stdlib
-end
-
 mutable struct Server
     storedir::String
     context::Pkg.Types.Context
@@ -27,8 +21,7 @@ function TypeRef(t::DataType)
     pm = String.(split(string(Base.parentmodule(t)), "."))
     pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm))))
 end
-# Base.show(io, tr::TypeRef{T}) where T = print(io, "TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
-# Base.display(tr::TypeRef{T}) where T = print("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
+
 Base.string(tr::TypeRef{T}) where T = string("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
 
 abstract type SymStore end
@@ -84,16 +77,26 @@ function _getdoc(x)
     end
 end
 
+# v1.4 compat for change in kwarg_decl signature
+@static if length(first(methods(Base.kwarg_decl)).sig.parameters) == 2
+    kwarg_decl(m::Method, b) = Base.kwarg_decl(m)
+else
+    kwarg_decl = Base.kwarg_decl
+end
+
 function read_methods(x)
+    if x isa Core.IntrinsicFunction
+        return MethodStore[MethodStore("intrinsic-function", 0, [("args...", "Any")])]
+    end
     ms = methods(x)
-    map(ms) do m
+    ms1 = map(ms) do m
         path = isabspath(String(m.file)) ? String(m.file) : Base.find_source_file(String(m.file))
         if path === nothing
             path = ""
         end
         args = Base.arg_decl_parts(m)[2][2:end]
         if isdefined(ms.mt, :kwsorter)
-            kws = Base.kwarg_decl(m, typeof(ms.mt.kwsorter))
+            kws = kwarg_decl(m, typeof(ms.mt.kwsorter))
             for kw in kws
                 push!(args, (string(kw), ".KW"))
             end
@@ -107,6 +110,20 @@ function read_methods(x)
                     m.line,
                     args)
     end
+    for i in 1:length(ms1)
+        for j = i + 1:length(ms1)
+            if ms1[i].file == ms1[j].file && ms1[i].line == ms1[j].line
+                if length(ms1[i].args) < length(ms1[j].args) && 
+                    ms1[i].args == ms1[j].args[1:length(ms1[i].args)]
+                    kws = filter(a->last(a) == ".KW", ms1[j].args)
+                    if !isempty(kws)
+                        append!(ms1[i].args, ms1[j].args[end - length(kws) + 1:end])
+                    end
+                end
+            end
+        end
+    end
+    ms1
 end
 
 function collect_params(t, params = [])
@@ -126,9 +143,10 @@ function load_core()
 
     # Add special cases
     push!(depot["Base"].exported, "include")
+    append!(depot["Base"].vals["include"].methods, read_methods(Base.MainInclude.include))
     depot["Base"].vals["@."] = depot["Base"].vals["@__dot__"]
     push!(depot["Base"].exported, "@.")
-    delete!(depot["Core"].exported, "Main")
+    depot["Core"].vals["Main"] = genericStore("Module", [], _getdoc(Main))
     # Add built-ins
     builtins = (split("=== typeof sizeof <: isa typeassert throw tuple getfield setfield! fieldtype nfields isdefined arrayref arrayset arraysize applicable invoke apply_type _apply _expr svec"))
     for f in builtins
@@ -140,6 +158,8 @@ function load_core()
     end
     push!(depot["Core"].exported, "ccall")
     depot["Core"].vals["ccall"] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("(function_name, library", "Any"), ("returntype", "Any"), ("(argtype1, ...", "Tuple"), ("argvalue1, ...", "Any")])], "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.")
+
+    depot["Core"].vals["@__doc__"] = FunctionStore(read_methods(getfield(Core, Symbol("@__doc__"))), _getdoc(getfield(Core, Symbol("@__doc__"))))
     return depot
 end
 
@@ -158,22 +178,16 @@ function get_module(c::Pkg.Types.Context, m::Module)
             if x isa Function
                 out.vals[String(n)] = FunctionStore(read_methods(x), _getdoc(x))
             elseif t isa DataType
-                if t.abstract || t.isbitstype
-                    out.vals[String(n)] = DataTypeStore(string.(p), [], [], [], _getdoc(x))
-                elseif isdefined(t, :types) && !isempty(t.types) && !Base.isvatuple(t)
-                    out.vals[String(n)] = DataTypeStore(string.(p),
-                                                     collect(string.(fieldnames(t))),
-                                                     TypeRef.(collect(t.types)),
-                                                     read_methods(x),
-                                                     _getdoc(x))
-                else
-                    out.vals[String(n)] = DataTypeStore(string.(p), [], [], [], _getdoc(x))
-                end
+                out.vals[String(n)] = DataTypeStore(string.(p),
+                                hasfields(t) ? collect(string.(fieldnames(t))) : String[],
+                                get_fieldtypes(t),
+                                t == Vararg ? [] : read_methods(x),
+                                _getdoc(x))
             elseif x isa Module && x != m # include reference to current module
                 n == :Main && continue
                 if parentmodule(x) == m # load non-imported submodules
                     out.vals[String(n)] = get_module(c, x)
-
+                    
                 else
                     pm = String.(split(string(Base.parentmodule(x)), "."))
                     out.vals[String(n)] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
@@ -187,38 +201,56 @@ function get_module(c::Pkg.Types.Context, m::Module)
 end
 
 function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path = dirname(c.env.manifest_file))
-    uuid in keys(depot) && return true
+    if uuid in keys(depot)
+        return 
+    end
 
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
+    pid = Base.PkgId(uuid, pe_name)
     old_env_path = env_path
-    m = try
-        LoadingBay.eval(:(import $(Symbol(pe_name))))
+    
+    if pid in keys(Base.loaded_modules)
+        LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(LoadingBay, Symbol(pe_name))
-        depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
-    catch err
-        try
-            m = tryaccess(getfield(LoadingBay, Symbol(packagename(c, first(find_parent(c, uuid))))), Symbol(pe_name))
-            depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
-        catch err1
-            @info "Failed to load $uuid [$(pe_name)] from $env_path"
+    else
+        m = try
+            LoadingBay.eval(:(import $(Symbol(pe_name))))
+            m = getfield(LoadingBay, Symbol(pe_name))
+        catch e
             depot[uuid] = Package(pe_name, ModuleStore(pe_name), version(pe), uuid, sha_pkg(pe))
             return false
         end
-    end
-
+    end    
+    depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
+    
+    pe_path = pathof(m) isa String && !isempty(pathof(m)) ? joinpath(dirname(pathof(m)), "..") : nothing
+    
     # Dependencies
     for pkg in deps(pe)
-        if path(pe) isa String
+        if path(pe) isa String 
             env_path = path(pe)
             Pkg.API.activate(env_path)
-        elseif !is_stdlib(c, uuid) && ((Pkg.API.dir(pe_name) isa String) && !isempty(Pkg.API.dir(pe_name)))
-            env_path = Pkg.API.dir(pe_name)
-            Pkg.API.activate(env_path)
+        elseif !(is_stdlib(c, uuid)) && pe_path isa String
+            Pkg.API.activate(pe_path)
         end
         cache_package(c, packageuuid(pkg), depot, env_path)
     end
 
     Pkg.API.activate(old_env_path)
     return true
+end
+
+function cache_packages_and_save(c::Pkg.Types.Context, uuids::Vector{UUID})    
+    storedir = abspath(joinpath(@__DIR__, "..", "store"))
+    depot = Dict()
+    for uuid in uuids
+        cache_package(c, uuid, depot)
+    end
+    for (uuid, pkg) in depot
+        open(joinpath(storedir, "$uuid.jstore"), "w") do io
+            serialize(io, pkg)
+        end
+    end
+    return [p[1] for p in depot]
 end
