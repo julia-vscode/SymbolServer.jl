@@ -209,3 +209,13 @@ function hasfields(@nospecialize t)
     end
     return true
 end
+
+@static if isdefined(Base, :datatype_fieldtypes)
+    function get_fieldtypes(t::DataType)    
+        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]    
+    end
+else
+    function get_fieldtypes(t::DataType)    
+        isdefined(t, :types) ? TypeRef.(collect(t.types)) : TypeRef[]
+    end
+end
