@@ -41,6 +41,7 @@ function find_parent(c::Pkg.Types.Context, uuid::UUID, out = Set{UUID}())
 end
 
 @static if VERSION < v"1.1"
+    # is_stdlib(a,b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u,p) in manifest(context))
 
@@ -87,6 +88,7 @@ end
         return nothing
     end
 else
+    # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
     isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u,p) in manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = haskey(manifest(context), uuid)
 
@@ -197,5 +199,49 @@ function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
         _lookup(tr, m.vals[tr.name[i]], i + 1)
     elseif i == N && haskey(m.vals, tr.name[i])
         return m.vals[tr.name[i]]
+    end
+end
+
+function hasfields(@nospecialize t)
+    if t isa UnionAll || t isa Union
+        t = Base.argument_datatype(t)
+        if t === nothing
+            return false
+        end
+        t = t::DataType
+    elseif t == Union{}
+        return false
+    end
+    if !(t isa DataType)
+        return false
+    end
+    if t.name === Base.NamedTuple_typename
+        names, types = t.parameters
+        if names isa Tuple
+            return true
+        end
+        if types isa DataType && types <: Tuple
+            return fieldcount(types)
+        end
+        abstr = true
+    else
+        abstr = t.abstract || (t.name === Tuple.name && Base.isvatuple(t))
+    end
+    if abstr
+        return false
+    end
+    if isdefined(t, :types)
+        return true
+    end
+    return true
+end
+
+@static if isdefined(Base, :datatype_fieldtypes)
+    function get_fieldtypes(t::DataType)    
+        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]    
+    end
+else
+    function get_fieldtypes(t::DataType)    
+        isdefined(t, :types) ? TypeRef.(collect(t.types)) : TypeRef[]
     end
 end
