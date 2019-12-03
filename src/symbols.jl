@@ -167,7 +167,7 @@ function load_core()
     return depot
 end
 
-function get_module(c::Pkg.Types.Context, m::Module)
+function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
     out = ModuleStore(string(Base.nameof(m)))
     out.doc = string(Docs.doc(m))
     out.exported = Set{String}(string.(names(m)))
@@ -190,7 +190,7 @@ function get_module(c::Pkg.Types.Context, m::Module)
             elseif x isa Module && x != m # include reference to current module
                 n == :Main && continue
                 if parentmodule(x) == m # load non-imported submodules
-                    out.vals[String(n)] = get_module(c, x)
+                    out.vals[String(n)] = get_module(c, x, pkg_deps)
 
                 else
                     pm = String.(split(string(Base.parentmodule(x)), "."))
@@ -201,6 +201,19 @@ function get_module(c::Pkg.Types.Context, m::Module)
             end
         end
     end
+
+    for d in pkg_deps
+        if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d))
+            x = getfield(m, Symbol(d))
+            pm = String.(split(string(Base.parentmodule(x)), "."))
+            if Base.parentmodule(x) == x
+                out.vals[d] = PackageRef(ntuple(i-> pm[i], length(pm)))
+            else
+                out.vals[d] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
+            end
+        end
+    end
+
     out
 end
 
@@ -224,7 +237,7 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path =
             return false
         end
     end
-    depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
+    depot[uuid] = Package(pe_name, get_module(c, m, Set(keys(deps(pe)))), version(pe), uuid, sha_pkg(pe))
 
     pe_path = pathof(m) isa String && !isempty(pathof(m)) ? joinpath(dirname(pathof(m)), "..") : nothing
 
