@@ -48,9 +48,9 @@ mutable struct SymbolServerProcess
 end
 
 function Base.show(io::IO, ssp::SymbolServerProcess)
-    println(io, "SymbolServerProcess with $(length(ssp.depot)) ($(sum(!isempty(v.vals) for (k,v) in ssp.depot))) packages")
+    println(io, "SymbolServerProcess with $(length(ssp.depot)) ($(sum(!isempty(v.vals) for (k, v) in ssp.depot))) packages")
 
-    print(join(sort!([string(isempty(v.vals) ? " ** " : "    ", k) for (k, v) in ssp.depot], lt = (a,b) ->a[5:end]<b[5:end]), "\n"))
+    print(join(sort!([string(isempty(v.vals) ? " ** " : "    ", k) for (k, v) in ssp.depot], lt = (a, b)->a[5:end] < b[5:end]), "\n"))
 end
 
 
