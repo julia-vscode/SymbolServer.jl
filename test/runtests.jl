@@ -18,7 +18,7 @@ using Test
 
     uuid = packageuuid(server.context, "SymbolServer")
     @test uuid isa UUID
-    
+
 
     pe = frommanifest(server.context, uuid)
     @test pe isa SymbolServer.PackageEntry
