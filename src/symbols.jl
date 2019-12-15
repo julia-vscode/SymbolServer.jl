@@ -118,7 +118,7 @@ function read_methods(x)
     for i in 1:length(ms1)
         for j = i + 1:length(ms1)
             if ms1[i].file == ms1[j].file && ms1[i].line == ms1[j].line
-                if length(ms1[i].args) < length(ms1[j].args) && 
+                if length(ms1[i].args) < length(ms1[j].args) &&
                     ms1[i].args == ms1[j].args[1:length(ms1[i].args)]
                     kws = filter(a->last(a) == ".KW", ms1[j].args)
                     if !isempty(kws)
@@ -183,7 +183,7 @@ function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
                 out.vals[String(n)] = FunctionStore(read_methods(x), _getdoc(x))
             elseif t isa DataType
                 out.vals[String(n)] = DataTypeStore(string.(p),
-                                hasfields(t) ? collect(string.(fieldnames(t))) : String[], 
+                                hasfields(t) ? collect(string.(fieldnames(t))) : String[],
                                 get_fieldtypes(t),
                                 t == Vararg ? [] : read_methods(x),
                                 _getdoc(x))
@@ -207,7 +207,7 @@ function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
             x = getfield(m, Symbol(d))
             pm = String.(split(string(Base.parentmodule(x)), "."))
             if Base.parentmodule(x) == x
-                out.vals[d] = PackageRef(ntuple(i-> pm[i], length(pm)))
+                out.vals[d] = PackageRef(ntuple(i->pm[i], length(pm)))
             else
                 out.vals[d] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
             end

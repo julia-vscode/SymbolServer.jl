@@ -43,10 +43,10 @@ end
 @static if VERSION < v"1.1"
     # is_stdlib(a,b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
-    isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u,p) in manifest(context))
+    isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u, p) in manifest(context))
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
-    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n,u) in deps(project(context)))
+    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
 
     function packageuuid(c::Pkg.Types.Context, name::String)
         for pkg in manifest(c)
@@ -59,7 +59,7 @@ end
     packageuuid(pkg::Pair{String,Any}) = last(pkg) isa String ? UUID(last(pkg)) : UUID(first(last(pkg))["uuid"])
 
     function packagename(c::Pkg.Types.Context, uuid)
-        for (n,p) in c.env.manifest
+        for (n, p) in c.env.manifest
             if get(first(p), "uuid", "") == string(uuid)
                 return n
             end
@@ -68,7 +68,7 @@ end
     end
 
     function deps(uuid::UUID, c::Pkg.Types.Context)
-        if any(p[1]["uuid"] == string(uuid) for (n,p) in manifest(c))
+        if any(p[1]["uuid"] == string(uuid) for (n, p) in manifest(c))
             return manifest(c)[string(uuid)][1].deps
         else
             return Dict{Any,Any}()
@@ -80,7 +80,7 @@ end
     version(pe::PackageEntry) = get(pe[1], "version", nothing)
 
     function frommanifest(c::Pkg.Types.Context, uuid)
-        for (n,p) in c.env.manifest
+        for (n, p) in c.env.manifest
             if get(first(p), "uuid", "") == string(uuid)
                 return p
             end
@@ -89,11 +89,11 @@ end
     end
 else
     # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
-    isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u,p) in manifest(context))
+    isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u, p) in manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = haskey(manifest(context), uuid)
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
-    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n,u) in deps(project(context)))
+    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
 
     function packageuuid(c::Pkg.Types.Context, name::String)
         for pkg in manifest(c)
@@ -158,7 +158,7 @@ function change_env(c, pe)
     if path(pe) isa String
         env_path = path(pe)
         Pkg.API.activate(env_path)
-    elseif !is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) &&!isempty(Pkg.API.dir(packagename(pe))))
+    elseif !is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) && !isempty(Pkg.API.dir(packagename(pe))))
         env_path = Pkg.API.dir(packagename(pe))
         Pkg.API.activate(env_path)
     end
@@ -237,11 +237,11 @@ function hasfields(@nospecialize t)
 end
 
 @static if isdefined(Base, :datatype_fieldtypes)
-    function get_fieldtypes(t::DataType)    
-        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]    
+    function get_fieldtypes(t::DataType)
+        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]
     end
 else
-    function get_fieldtypes(t::DataType)    
+    function get_fieldtypes(t::DataType)
         isdefined(t, :types) ? TypeRef.(collect(t.types)) : TypeRef[]
     end
 end
