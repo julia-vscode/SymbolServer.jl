@@ -99,7 +99,7 @@ function read_methods(x)
         if path === nothing
             path = ""
         end
-        args = Base.arg_decl_parts(m)[2][2:end]
+        args = Base.invokelatest(Base.arg_decl_parts, m)[2][2:end]
         if isdefined(ms.mt, :kwsorter)
             kws = kwarg_decl(m, typeof(ms.mt.kwsorter))
             for kw in kws
