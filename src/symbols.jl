@@ -99,7 +99,13 @@ function read_methods(x)
         if path === nothing
             path = ""
         end
-        args = Base.invokelatest(Base.arg_decl_parts, m)[2][2:end]
+        args = try
+            Base.invokelatest(Base.arg_decl_parts, m)[2][2:end]
+        catch err
+            # This is a hack around some problem where Julia segfaults
+            # in the line above
+            Tuple{String,String}[]
+        end
         if isdefined(ms.mt, :kwsorter)
             kws = kwarg_decl(m, typeof(ms.mt.kwsorter))
             for kw in kws
