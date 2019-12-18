@@ -23,12 +23,12 @@ Checks whether a package is in the manifest of a given context, e.g. is either d
 function isinmanifest end
 
 @static if VERSION < v"1.1"
-    is_stdlib(a, b) = false
+    # is_stdlib(a,b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
-    isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u,p) in manifest(context))
+    isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u, p) in manifest(context))
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
-    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n,u) in deps(project(context)))
+    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
 
     function packageuuid(c::Pkg.Types.Context, name::String) 
         for pkg in manifest(c)
@@ -41,7 +41,7 @@ function isinmanifest end
     packageuuid(pkg::Pair{String,Any}) = last(pkg) isa String ? UUID(last(pkg)) : UUID(first(last(pkg))["uuid"])
     
     function packagename(c::Pkg.Types.Context, uuid)
-        for (n,p) in c.env.manifest
+        for (n, p) in c.env.manifest
             if get(first(p), "uuid", "") == string(uuid)
                 return n
             end
@@ -50,7 +50,7 @@ function isinmanifest end
     end
 
     function deps(uuid::UUID, c::Pkg.Types.Context)
-        if any(p[1]["uuid"] == string(uuid) for (n,p) in manifest(c))
+        if any(p[1]["uuid"] == string(uuid) for (n, p) in manifest(c))
             return manifest(c)[string(uuid)][1].deps
         else
             return Dict{Any,Any}()
@@ -62,7 +62,7 @@ function isinmanifest end
     version(pe::PackageEntry) = get(pe[1], "version", nothing)
     
     function frommanifest(c::Pkg.Types.Context, uuid)
-        for (n,p) in c.env.manifest
+        for (n, p) in c.env.manifest
             if get(first(p), "uuid", "") == string(uuid)
                 return p
             end
@@ -70,14 +70,14 @@ function isinmanifest end
         return nothing
     end
 else
-    const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
-    isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u,p) in manifest(context))
+    # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
+    isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u, p) in manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = haskey(manifest(context), uuid)
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
-    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n,u) in deps(project(context)))
-    
-    function packageuuid(c::Pkg.Types.Context, name::String) 
+    isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
+
+    function packageuuid(c::Pkg.Types.Context, name::String)
         for pkg in manifest(c)
             if last(pkg).name == name
                 return first(pkg)
@@ -136,6 +136,15 @@ function can_access(m::Module, s::Symbol)
     end
 end
 
+function change_env(c, pe)
+    if path(pe) isa String
+        env_path = path(pe)
+        Pkg.API.activate(env_path)
+    elseif !is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) && !isempty(Pkg.API.dir(packagename(pe))))
+        env_path = Pkg.API.dir(packagename(pe))
+        Pkg.API.activate(env_path)
+    end
+end
 
 function sha2_256_dir(path, sha = sha = zeros(UInt8, 32))
     (uperm(path) & 0x04) != 0x04 && return
@@ -175,7 +184,6 @@ function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
     end
 end
 
-# pulled from reflection.jl, returns 
 function hasfields(@nospecialize t)
     if t isa UnionAll || t isa Union
         t = Base.argument_datatype(t)
@@ -211,11 +219,11 @@ function hasfields(@nospecialize t)
 end
 
 @static if isdefined(Base, :datatype_fieldtypes)
-    function get_fieldtypes(t::DataType)    
-        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]    
+    function get_fieldtypes(t::DataType)
+        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]
     end
 else
-    function get_fieldtypes(t::DataType)    
+    function get_fieldtypes(t::DataType)
         isdefined(t, :types) ? TypeRef.(collect(t.types)) : TypeRef[]
     end
 end

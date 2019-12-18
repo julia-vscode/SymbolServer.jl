@@ -1,7 +1,7 @@
 # SymbolServer
 
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
-[![Build Status](https://travis-ci.org/julia-vscode/SymbolServer.jl.svg?branch=master)](https://travis-ci.org/julia-vscode/SymbolServer.jl)
+![](https://github.com/julia-vscode/SymbolServer.jl/workflows/Run%20CI%20on%20master/badge.svg)
 [![codecov.io](http://codecov.io/github/julia-vscode/SymbolServer.jl/coverage.svg?branch=master)](http://codecov.io/github/julia-vscode/SymbolServer.jl?branch=master)
 
 SymbolServer is a helper package for LanguageServer.jl that provides information about internal and exported variables of packages (without loading them). A `SymbolServerProcess` is intened to run either in the main or a parallel process (in which case the package must be loaded using `@everywhere using SymbolServer`).

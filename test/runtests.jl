@@ -7,7 +7,25 @@ using Test
 @testset "SymbolServer" begin
     server = SymbolServerProcess()
     @test server.context isa Pkg.Types.Context
-    
+    SymbolServer.get_context(server)
+    @test server.context isa Pkg.Types.Context
+    @test "SymbolServer" in keys(deps(project(server.context)))
+    @test SymbolServer.isinproject(server.context, "SymbolServer")
+    @test SymbolServer.isinmanifest(server.context, "SymbolServer")
+
+    @test all(d in keys(deps(project(server.context))) for d in ("LibGit2", "Pkg", "SHA", "Serialization"))
+
+    uuid = packageuuid(server.context, "SymbolServer")
+    @test uuid isa UUID
+
+
+    pe = frommanifest(server.context, uuid)
+    @test pe isa SymbolServer.PackageEntry
+
+
+    @test !isempty(server.depot["Base"].vals)
+    @test !isempty(server.depot["Core"].vals)
+
     @testset "Cache package on client side" begin
         uuid = SymbolServer.packageuuid(server.context, "SymbolServer")
         depot = Dict()

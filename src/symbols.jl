@@ -21,7 +21,6 @@ function TypeRef(t::DataType)
     pm = String.(split(string(Base.parentmodule(t)), "."))
     pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm))))
 end
-
 Base.string(tr::TypeRef{T}) where T = string("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
 
 abstract type SymStore end
@@ -94,7 +93,13 @@ function read_methods(x)
         if path === nothing
             path = ""
         end
-        args = Base.arg_decl_parts(m)[2][2:end]
+        args = try
+            Base.invokelatest(Base.arg_decl_parts, m)[2][2:end]
+        catch err
+            # This is a hack around some problem where Julia segfaults
+            # in the line above
+            Tuple{String,String}[]
+        end
         if isdefined(ms.mt, :kwsorter)
             kws = kwarg_decl(m, typeof(ms.mt.kwsorter))
             for kw in kws
@@ -113,7 +118,7 @@ function read_methods(x)
     for i in 1:length(ms1)
         for j = i + 1:length(ms1)
             if ms1[i].file == ms1[j].file && ms1[i].line == ms1[j].line
-                if length(ms1[i].args) < length(ms1[j].args) && 
+                if length(ms1[i].args) < length(ms1[j].args) &&
                     ms1[i].args == ms1[j].args[1:length(ms1[i].args)]
                     kws = filter(a->last(a) == ".KW", ms1[j].args)
                     if !isempty(kws)
@@ -156,14 +161,21 @@ function load_core()
             depot["Core"].vals[f] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("args...", "Any")])], _getdoc(getfield(Core, Symbol(f))))
         end
     end
+    haskey(depot["Core"].vals, "_typevar") && push!(depot["Core"].vals["_typevar"].methods, MethodStore("built-in", 0, [("n", "Symbol"), ("lb", "Any"), ("ub", "Any")]))
+    push!(depot["Core"].vals["setproperty!"].methods, MethodStore("built-in", 0, [("value", "Any"), ("name", "Symbol"), ("x", "Any")]))
+    push!(depot["Core"].vals["_apply_latest"].methods, MethodStore("built-in", 0, [("f", "Function"), ("args...", "Any")]))
+    push!(depot["Core"].vals["_apply_pure"].methods, MethodStore("built-in", 0, [("f", "Function"), ("args...", "Any")]))
+    push!(depot["Core"].vals["getproperty"].methods, MethodStore("built-in", 0, [("value", "Any"), ("name", "Symbol")]))
+    push!(depot["Core"].vals["ifelse"].methods, MethodStore("built-in", 0, [("condition", "Bool"), ("x", "Any"), ("y", "Any")]))
+    haskey(depot["Core"].vals, "const_arrayref") && push!(depot["Core"].vals["const_arrayref"].methods, MethodStore("built-in", 0, [("args...", "Any")]))
+
     push!(depot["Core"].exported, "ccall")
     depot["Core"].vals["ccall"] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("(function_name, library", "Any"), ("returntype", "Any"), ("(argtype1, ...", "Tuple"), ("argvalue1, ...", "Any")])], "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.")
-
     depot["Core"].vals["@__doc__"] = FunctionStore(read_methods(getfield(Core, Symbol("@__doc__"))), _getdoc(getfield(Core, Symbol("@__doc__"))))
     return depot
 end
 
-function get_module(c::Pkg.Types.Context, m::Module)
+function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
     out = ModuleStore(string(Base.nameof(m)))
     out.doc = string(Docs.doc(m))
     out.exported = Set{String}(string.(names(m)))
@@ -186,8 +198,8 @@ function get_module(c::Pkg.Types.Context, m::Module)
             elseif x isa Module && x != m # include reference to current module
                 n == :Main && continue
                 if parentmodule(x) == m # load non-imported submodules
-                    out.vals[String(n)] = get_module(c, x)
-                    
+                    out.vals[String(n)] = get_module(c, x, pkg_deps)
+
                 else
                     pm = String.(split(string(Base.parentmodule(x)), "."))
                     out.vals[String(n)] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
@@ -197,6 +209,19 @@ function get_module(c::Pkg.Types.Context, m::Module)
             end
         end
     end
+
+    for d in pkg_deps
+        if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d))
+            x = getfield(m, Symbol(d))
+            pm = String.(split(string(Base.parentmodule(x)), "."))
+            if Base.parentmodule(x) == x
+                out.vals[d] = PackageRef(ntuple(i->pm[i], length(pm)))
+            else
+                out.vals[d] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
+            end
+        end
+    end
+
     out
 end
 
@@ -209,7 +234,7 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path =
     pe_name = packagename(c, uuid)
     pid = Base.PkgId(uuid, pe_name)
     old_env_path = env_path
-    
+
     if pid in keys(Base.loaded_modules)
         LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(LoadingBay, Symbol(pe_name))
@@ -221,11 +246,11 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path =
             depot[uuid] = Package(pe_name, ModuleStore(pe_name), version(pe), uuid, sha_pkg(pe))
             return false
         end
-    end    
-    depot[uuid] = Package(pe_name, get_module(c, m), version(pe), uuid, sha_pkg(pe))
-    
+    end
+    depot[uuid] = Package(pe_name, get_module(c, m, Set(keys(deps(pe)))), version(pe), uuid, sha_pkg(pe))
+
     pe_path = pathof(m) isa String && !isempty(pathof(m)) ? joinpath(dirname(pathof(m)), "..") : nothing
-    
+
     # Dependencies
     for pkg in deps(pe)
         if path(pe) isa String 
