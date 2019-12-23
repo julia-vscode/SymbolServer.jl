@@ -86,7 +86,17 @@ else
     end
     packageuuid(pkg::Pair{String,UUID}) = last(pkg)
     packageuuid(pkg::Pair{UUID,PackageEntry}) = first(pkg)
-    packagename(c::Pkg.Types.Context, uuid::UUID) = manifest(c)[uuid].name
+    function packagename(c::Pkg.Types.Context, uuid::UUID)
+        if isempty(manifest(c))
+            for pd in deps(project(c))
+                if pd[2] == uuid
+                    return pd[1]
+                end
+            end
+        else
+            return manifest(c)[uuid].name
+        end
+    end
 
     function deps(uuid::UUID, c::Pkg.Types.Context)
         if haskey(manifest(c), uuid)
