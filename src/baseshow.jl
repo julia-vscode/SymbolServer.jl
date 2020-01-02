@@ -86,7 +86,7 @@ function _show_method_table(io::IO, ms::Base.MethodList, max::Int=-1, header::Bo
     name = mt.name
     hasname = isdefined(mt.module, name) &&
               typeof(getfield(mt.module, name)) <: Function
-    if header
+    if header && isdefined(Base, :show_method_list_header)
         Base.show_method_list_header(io, ms, str -> "\""*str*"\"")
     end
     kwtype = isdefined(mt, :kwsorter) ? typeof(mt.kwsorter) : nothing
@@ -243,6 +243,21 @@ end
     _str_sizehint = Base._str_sizehint
 else
     _str_sizehint = Base.tostr_sizehint
+end
+
+@static if isdefined(Base, :show_sym)
+    show_sym = Base.show_sym
+else
+    function show_sym(io::IO, sym; allow_macroname=false)
+        if Base.isidentifier(sym) || Base.isoperator(sym)
+            print(io, sym)
+        elseif allow_macroname && (sym_str = string(sym); startswith(sym_str, '@'))
+            print(io, '@')
+            show_sym(io, sym_str[2:end])
+        else
+            print(io, "var", repr(string(sym)))
+        end
+    end
 end
 
 function _string_with_env(env, xs...)
@@ -416,7 +431,7 @@ function _show_type_name(io::IO, tn::Core.TypeName)
             end
         end
     end
-    Base.show_sym(io, sym)
+    show_sym(io, sym)
     quo      && print(io, ")")
     globfunc && print(io, ")")
 end
