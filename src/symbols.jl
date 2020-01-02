@@ -72,7 +72,7 @@ struct genericStore <: SymStore
 end
 
 function _getdoc(x)
-    BaseShow._doc(x)
+    string(BaseShow._doc((x)))
 end
 
 # v1.4 compat for change in kwarg_decl signature
