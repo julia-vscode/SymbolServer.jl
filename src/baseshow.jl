@@ -239,7 +239,7 @@ function _argtype_decl(env, n, sig::DataType, i::Int, nargs, isva::Bool) # -> (a
     return s, _string_with_env(env, t)
 end
 
-@statif if isdefined(Base, :_str_sizehint)
+@static if isdefined(Base, :_str_sizehint)
     _str_sizehint = Base._str_sizehint
 else
     _str_sizehint = Base.tostr_sizehint
