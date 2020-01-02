@@ -124,7 +124,7 @@ function _show_method_table(io::IO, ms::Base.MethodList, max::Int=-1, header::Bo
     end
 end
 
-_show(io::IO, x) = Base.show(io, x)
+_show(io::IO, x) = Base.invokelatest(Base.show, io, x)
 _show(io::IO, ms::Base.MethodList) = _show_method_table(io, ms)
 _show(io::IO, mt::Core.MethodTable) = _show_method_table(io, Base.MethodList(mt))
 
