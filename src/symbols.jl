@@ -72,14 +72,7 @@ struct genericStore <: SymStore
 end
 
 function _getdoc(x)
-    # Packages can add methods to Docs.doc, and those can have a bug,
-    # and we don't want that to kill the symbol server process
-    try
-        return string(Docs.doc(x))
-    catch err
-        @warn "Couldn't retrieve docs."
-        return ""
-    end
+    BaseShow._doc(x)
 end
 
 # v1.4 compat for change in kwarg_decl signature
@@ -99,13 +92,7 @@ function read_methods(x)
         if path === nothing
             path = ""
         end
-        args = try
-            Base.invokelatest(Base.arg_decl_parts, m)[2][2:end]
-        catch err
-            # This is a hack around some problem where Julia segfaults
-            # in the line above
-            Tuple{String,String}[]
-        end
+        args = Base.invokelatest(BaseShow._arg_decl_parts, m)[2][2:end]
         if isdefined(ms.mt, :kwsorter)
             kws = kwarg_decl(m, typeof(ms.mt.kwsorter))
             for kw in kws
@@ -183,7 +170,7 @@ end
 
 function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
     out = ModuleStore(string(Base.nameof(m)))
-    out.doc = string(Docs.doc(m))
+    out.doc = string(BaseShow._doc(m))
     out.exported = Set{String}(string.(names(m)))
     allnames = names(m, all = true, imported = true)
     for n in allnames
