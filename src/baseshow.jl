@@ -239,13 +239,19 @@ function _argtype_decl(env, n, sig::DataType, i::Int, nargs, isva::Bool) # -> (a
     return s, _string_with_env(env, t)
 end
 
+@statif if isdefined(Base, :_str_sizehint)
+    _str_sizehint = Base._str_sizehint
+else
+    _str_sizehint = Base.tostr_sizehint
+end
+
 function _string_with_env(env, xs...)
     if isempty(xs)
         return ""
     end
     siz::Int = 0
     for x in xs
-        siz += Base._str_sizehint(x)
+        siz += _str_sizehint(x)
     end
     # specialized for performance reasons
     s = IOBuffer(sizehint=siz)
