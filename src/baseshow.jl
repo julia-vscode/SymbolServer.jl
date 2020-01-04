@@ -234,7 +234,9 @@ function _argtype_decl(env, n, sig::DataType, i::Int, nargs, isva::Bool) # -> (a
                 return s, _string_with_env(env, tt) * "..."
             end
         end
-        return s, _string_with_env(env, "Vararg{", tt, ",", tn, "}")
+        t1 = _string_with_env(env, "Vararg{", tt, ",", tn, "}")
+        replace(t1, "\""=>"")
+        return s, startswith(t1, "\"") ? replace(t1, "\""=>"") : t1
     end
     return s, _string_with_env(env, t)
 end
