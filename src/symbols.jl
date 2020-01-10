@@ -231,15 +231,12 @@ function get_module(m::Module, pkg_deps = Set{String}())
     out
 end
 
-function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path = dirname(c.env.manifest_file))
-    if uuid in keys(depot)
-        return 
-    end
+function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict)
+    uuid in keys(depot) && return true
 
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
     pid = Base.PkgId(uuid, pe_name)
-    old_env_path = env_path
 
     if pid in keys(Base.loaded_modules)
         LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
@@ -259,16 +256,9 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict, env_path =
 
     # Dependencies
     for pkg in deps(pe)
-        if path(pe) isa String 
-            env_path = path(pe)
-            Pkg.API.activate(env_path)
-        elseif !(is_stdlib(c, uuid)) && pe_path isa String
-            Pkg.API.activate(pe_path)
-        end
-        cache_package(c, packageuuid(pkg), depot, env_path)
+        cache_package(c, packageuuid(pkg), depot)
     end
 
-    Pkg.API.activate(old_env_path)
     return true
 end
 
