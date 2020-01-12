@@ -91,6 +91,7 @@ else
     # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
     isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u, p) in manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = haskey(manifest(context), uuid)
+    isinmanifest(manifest::Dict{UUID, PackageEntry}, uuid::UUID) = haskey(manifest, uuid)
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
     isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
@@ -105,6 +106,7 @@ else
     packageuuid(pkg::Pair{String,UUID}) = last(pkg)
     packageuuid(pkg::Pair{UUID,PackageEntry}) = first(pkg)
     packagename(c::Pkg.Types.Context, uuid::UUID) = manifest(c)[uuid].name
+    packagename(manifest::Dict{UUID, PackageEntry}, uuid::UUID) = manifest[uuid].name
 
     function deps(uuid::UUID, c::Pkg.Types.Context)
         if haskey(manifest(c), uuid)
@@ -119,6 +121,7 @@ else
     path(pe::PackageEntry) = pe.path
     version(pe::PackageEntry) = pe.version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
+    frommanifest(manifest::Dict{UUID, PackageEntry}, uuid) = manifest[uuid]
 end
 
 

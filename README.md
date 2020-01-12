@@ -12,17 +12,17 @@ Documentation for working with Julia environments is available [here](https://gi
 ## API
 
 ```julia
-SymbolServerProcess(path_to_env)
+SymbolServerInstance(path_to_env)
 ```
 Launches a server process (with given enviroment) and retrieves the active context. This client side process (this) contains a depot of retrieved packages.
 
 ```julia
-change_env(ssp::SymbolServerProcess, env_path::String)
+change_env(ssp::SymbolServerInstance, env_path::String)
 ```
 Activates a new environment on the server. The new active context must then be retrieved separately.
 
 ```julia
-get_context(ssp::SymbolServerProcess)
+get_context(ssp::SymbolServerInstance)
 ```
 Retrieves the active context (environment) from the server.
 

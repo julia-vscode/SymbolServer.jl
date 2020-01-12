@@ -4,9 +4,9 @@ using Base:UUID
 using Test
 
 @testset "SymbolServer" begin
-    server = SymbolServerProcess()
+    server = SymbolServerInstance()
 
-    @test server isa SymbolServerProcess
+    @test server isa SymbolServerInstance
     @test server.context isa Pkg.Types.Context
     SymbolServer.get_context(server)
     @test server.context isa Pkg.Types.Context
@@ -48,7 +48,7 @@ using Test
     end
 
     @testset "Load project packages" begin
-        server = SymbolServerProcess()
+        server = SymbolServerInstance()
         SymbolServer.load_project_packages(server)
         @test all(k in keys(server.depot) for k in ("LibGit2", "Pkg", "SHA", "Serialization"))
         kill(server)
