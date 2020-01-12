@@ -1,6 +1,6 @@
 module SymbolServer
 
-export SymbolServerInstance, change_env, load_manifest_packages, load_project_packages, get_context, getstore
+export SymbolServerInstance, getstore
 
 using Serialization, Pkg, SHA
 using Base: UUID
