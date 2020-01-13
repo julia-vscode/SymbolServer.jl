@@ -17,8 +17,6 @@ mutable struct SymbolServerInstance
     depot_path::String
 
     function SymbolServerInstance(depot_path::String)
-        !ispath(depot_path) && error("Must specify a depot path.")
-
         return new(nothing, nothing, depot_path)
     end
 end
@@ -30,7 +28,12 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
     server_script = joinpath(@__DIR__, "server.jl")
 
     env_to_use = copy(ENV)
-    env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
+
+    if ssi.depot_path==""
+        delete!(env_to_use, "JULIA_DEPOT_PATH")
+    else
+        env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
+    end
 
     # stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()    
     stderr_for_client_process = nothing
