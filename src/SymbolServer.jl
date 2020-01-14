@@ -70,9 +70,10 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
 end
 
 function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)
-    # TODO Detect Project.toml and JuliaProject.toml
-    project = Pkg.API.read_project(joinpath(environment_path, "Project.toml"))
-    # TODO Detect Manifest.toml and JuliaManifest.toml
+    project_filename = isfile(joinpath(environment_path, "JuliaProject.toml")) ? joinpath(environment_path, "JuliaProject.toml") : joinpath(environment_path, "Project.toml")
+    project = Pkg.API.read_project(project_filename)
+
+    manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
     manifest = Pkg.API.read_manifest(joinpath(environment_path, "Manifest.toml"))
 
     for uuid in values(deps(project))
