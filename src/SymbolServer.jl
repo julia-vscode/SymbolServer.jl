@@ -4,11 +4,8 @@ export SymbolServerInstance, getstore
 
 using Serialization, Pkg, SHA
 using Base: UUID
-@static if VERSION < v"1.1"
-    const PackageEntry = Vector{Dict{String,Any}}
-else
-    using Pkg.Types: PackageEntry
-end
+
+include("utils.jl")
 include("symbols.jl")
 
 mutable struct SymbolServerInstance
@@ -128,8 +125,6 @@ function clear_disc_store()
         end
     end
 end
-
-include("utils.jl")
 
 const stdlibs = load_core()
 

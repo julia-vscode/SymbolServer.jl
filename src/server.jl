@@ -20,12 +20,6 @@ end
 using Serialization, Pkg, SHA
 using Base: UUID
 
-@static if VERSION < v"1.1"
-    const PackageEntry = Vector{Dict{String,Any}}
-else
-    using Pkg.Types: PackageEntry
-end
-
 include("symbols.jl")
 include("utils.jl")
 

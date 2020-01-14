@@ -1,3 +1,9 @@
+@static if VERSION < v"1.1"
+    const PackageEntry = Vector{Dict{String,Any}}
+else
+    using Pkg.Types: PackageEntry
+end
+
 """
     manifest(c::Pkg.Types.Context)
 Retrieves the manifest of a Context.
