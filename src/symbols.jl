@@ -89,6 +89,24 @@ else
     kwarg_decl = Base.kwarg_decl
 end
 
+function _lookup(tr::PackageRef{N}, depot::Dict{String,ModuleStore}) where N
+    if haskey(depot, tr.name[1])
+        if N == 1
+            return depot[tr.name[1]]
+        else
+            return _lookup(tr, depot[tr.name[1]], 2)
+        end
+    end
+end
+
+function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
+    if i < N && haskey(m.vals, tr.name[i])
+        _lookup(tr, m.vals[tr.name[i]], i + 1)
+    elseif i == N && haskey(m.vals, tr.name[i])
+        return m.vals[tr.name[i]]
+    end
+end
+
 function read_methods(x)
     if x isa Core.IntrinsicFunction
         return MethodStore[MethodStore("intrinsic-function", 0, [("args...", "Any")])]
