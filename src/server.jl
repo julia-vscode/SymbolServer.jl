@@ -40,9 +40,16 @@ for (pk_name, uuid) in toplevel_pkgs
 
     if isfile(cache_path)
         if is_package_deved(Pkg.Types.Context().env.manifest, uuid)
-            # TODO We need to load the cache and check whether it needs
-            # to be re-cached based on the SHA of the actual content
-            @info "Package $pk_name ($uuid) is deved and we don't know whether our cache is out of date."
+            cached_version = open(cache_path) do io
+                deserialize(io)
+            end            
+
+            if sha_pkg(Pkg.Types.Context().env.manifest[uuid]) != cached_version.sha
+                @info "Now recaching package $pk_name ($uuid)"
+                cache_package(server.context, uuid, server.depot)
+            else
+                @info "Package $pk_name ($uuid) is cached."
+            end
         else            
             @info "Package $pk_name ($uuid) is cached."
         end
