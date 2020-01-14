@@ -5,8 +5,8 @@ export SymbolServerInstance, getstore
 using Serialization, Pkg, SHA
 using Base: UUID
 
-include("utils.jl")
 include("symbols.jl")
+include("utils.jl")
 
 mutable struct SymbolServerInstance
     process::Union{Nothing,Base.Process}
