@@ -32,6 +32,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
         env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
     end
 
+    # TODO Put this back in once we have crash reporting back up
     # stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()    
     stderr_for_client_process = nothing
 
@@ -39,7 +40,9 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
         kill(ssi.process)
     end
 
-    p = open(pipeline(Cmd(`$jl_cmd --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    use_code_coverage = Base.JLOptions().code_coverage
+
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
     ssi.process = p
     ssi.process_stderr = stderr_for_client_process
 
