@@ -88,7 +88,7 @@ Tries to load the on-disc stored cache for a package (uuid). Attempts to generat
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UUID, manifest, store)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
-    cache_path = joinpath(storedir, string(uuid, ".jstore"))
+    cache_path = joinpath(storedir, get_filename_from_name(manifest, uuid))
 
     if !isinmanifest(manifest, uuid)
         @info "Tried to load $uuid but failed to find it in the manifest."

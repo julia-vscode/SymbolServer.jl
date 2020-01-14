@@ -122,6 +122,25 @@ else
     version(pe::PackageEntry) = pe.version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID, PackageEntry}, uuid) = manifest[uuid]
+
+    function get_filename_from_name(manifest, uuid)
+        pkg_info = manifest[uuid]
+
+        name_for_cash_file = if pkg_info.tree_hash!==nothing
+            # We have a normal package, we use the tree hash
+            pkg_info.tree_hash
+        elseif pkg_info.path!==nothing
+            # We have a deved package, we use the hash of the folder name
+            bytes2hex(sha256(pkg_info.path))
+        else
+            # We have a stdlib, we use the uuid
+            string(uuid)
+        end
+
+        return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
+    end
+
+    is_package_deved(manifest, uuid) = manifest[uuid].path!==nothing
 end
 
 
