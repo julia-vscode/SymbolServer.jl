@@ -39,7 +39,7 @@ while true
             cache_package(server.context, UUID(uuid), server.depot)
         end
         out = Tuple{String,String,Bool,Bool,Bool}[] # list of saved caches
-        for  (uuid, pkg) in server.depot
+        for (uuid, pkg) in server.depot
             overwrote = isfile(joinpath(server.storedir, "$(string(uuid)).jstore"))
             write_cache(uuid, pkg)
 
