@@ -84,11 +84,11 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
 end
 
 """
-    load_package_from_cache_into_store!(ssp::SymbolServerInstance, uuid::UUID, store)
+    load_package_from_cache_into_store!(ssp::SymbolServerInstance, uuid, store)
 
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
-function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UUID, manifest, store)
+function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
     cache_path = joinpath(storedir, get_filename_from_name(manifest, uuid))
 
