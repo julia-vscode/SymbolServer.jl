@@ -45,6 +45,7 @@ struct Package
     uuid::Base.UUID
     sha
 end
+Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha) 
 
 struct MethodStore <: SymStore
     file::String
@@ -167,8 +168,8 @@ end
 function load_core()
     c = Pkg.Types.Context()
     depot = Dict{String,Any}()
-    depot["Core"] = get_module(c, Core)
-    depot["Base"] = get_module(c, Base)
+    depot["Core"] = get_module(Core)
+    depot["Base"] = get_module(Base)
 
     # Add special cases
     push!(depot["Base"].exported, "include")
@@ -199,7 +200,7 @@ function load_core()
     return depot
 end
 
-function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
+function get_module(m::Module, pkg_deps = Set{String}())
     out = ModuleStore(string(Base.nameof(m)))
     out.doc = string(Docs.doc(m))
     out.exported = Set{String}(string.(names(m)))
@@ -222,7 +223,7 @@ function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
             elseif x isa Module && x != m # include reference to current module
                 n == :Main && continue
                 if parentmodule(x) == m # load non-imported submodules
-                    out.vals[String(n)] = get_module(c, x, pkg_deps)
+                    out.vals[String(n)] = get_module(x, pkg_deps)
 
                 else
                     pm = String.(split(string(Base.parentmodule(x)), "."))
@@ -249,12 +250,12 @@ function get_module(c::Pkg.Types.Context, m::Module, pkg_deps = Set{String}())
     out
 end
 
-function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict)
+function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
     uuid in keys(depot) && return true
 
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
-    pid = Base.PkgId(uuid, pe_name)
+    pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
 
     if pid in keys(Base.loaded_modules)
         LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
@@ -268,7 +269,7 @@ function cache_package(c::Pkg.Types.Context, uuid::UUID, depot::Dict)
             return false
         end
     end
-    depot[uuid] = Package(pe_name, get_module(c, m, Set(keys(deps(pe)))), version(pe), uuid, sha_pkg(pe))
+    depot[uuid] = Package(pe_name, get_module(m, Set(keys(deps(pe)))), version(pe), uuid, sha_pkg(pe))
 
     pe_path = pathof(m) isa String && !isempty(pathof(m)) ? joinpath(dirname(pathof(m)), "..") : nothing
 

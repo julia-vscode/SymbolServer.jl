@@ -93,6 +93,27 @@ end
         end
         return nothing
     end
+    function frommanifest(manifest, uuid)
+        for (n, p) in manifest
+            if get(first(p), "uuid", "") == string(uuid)
+                return p
+            end
+        end
+        return nothing
+    end
+    function get_filename_from_name(manifest, uuid)
+        pkg_info = first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)])
+
+        name_for_cash_file = if get(pkg_info, "path", "")!= ""
+            # We have a deved package, we use the hash of the folder name
+            bytes2hex(sha256(pkg_info["path"]))
+        else
+            # We have a stdlib, we use the uuid
+            string(uuid)
+        end
+
+        return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
+    end
 else
     # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
     isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u, p) in manifest(context))
