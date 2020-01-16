@@ -66,7 +66,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
                 @info "Symbol server failed."
             end
         catch err
-            Base.display_error(err)
+            Base.display_error(stderr, err, catch_backtrace())
         end
     end
 end
