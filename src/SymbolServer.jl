@@ -47,26 +47,28 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
     ssi.process_stderr = stderr_for_client_process
 
     @async begin
-        @info "Waiting for symbol server to finish"
-        if success(p)
-            @info "Symbol server finished."
+        try
+            @info "Waiting for symbol server to finish"
+            if success(p)
+                @info "Symbol server finished."
 
-            # Now we create a new symbol store and load everything into that
-            # from disc
-            new_store = deepcopy(stdlibs)
-            load_project_packages_into_store!(ssi, environment_path, new_store)
+                # Now we create a new symbol store and load everything into that
+                # from disc
+                new_store = deepcopy(stdlibs)
+                load_project_packages_into_store!(ssi, environment_path, new_store)
 
-            @info "Push store to channel."
-            # Finally, we push the new store into the results channel
-            # Clients can pick it up from there
-            push!(result_channel, new_store)
-            @info "getstore is finished."
-        else
-            @info "Symbol server failed."
+                @info "Push store to channel."
+                # Finally, we push the new store into the results channel
+                # Clients can pick it up from there
+                push!(result_channel, new_store)
+                @info "getstore is finished."
+            else
+                @info "Symbol server failed."
+            end
+        catch err
+            Base.display_error(err)
         end
     end
-        
-    return
 end
 
 function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)
