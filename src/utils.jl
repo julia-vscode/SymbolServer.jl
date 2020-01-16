@@ -114,6 +114,7 @@ end
 
         return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
     end
+    is_package_deved(manifest, uuid) = get(first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)]), "path", "") != ""
 else
     # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
     isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u, p) in manifest(context))

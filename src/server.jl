@@ -44,7 +44,7 @@ for (pk_name, uuid) in toplevel_pkgs
                 deserialize(io)
             end            
 
-            if sha_pkg(Pkg.Types.Context().env.manifest[uuid]) != cached_version.sha
+            if sha_pkg(frommanifest(Pkg.Types.Context().env.manifest, uuid)) != cached_version.sha
                 @info "Now recaching package $pk_name ($uuid)"
                 cache_package(server.context, uuid, server.depot)
             else

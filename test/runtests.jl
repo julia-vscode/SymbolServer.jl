@@ -14,8 +14,11 @@ using Test
 
         ssi = SymbolServerInstance("")
         results = Channel(Inf)
+        @info 1
         getstore(ssi, path, results)
+        @info 2
         store = take!(results)
+        @info 3
 
         @test length(store) == 6
         @test haskey(store, "Core")
