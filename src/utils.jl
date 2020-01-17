@@ -116,10 +116,10 @@ end
         pkg_info = first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)])
 
         name_for_cash_file = if get(pkg_info, "git-tree-sha1", nothing)!==nothing
-            "-normal-" * pkg_info["git-tree-sha1"]
+            "-normal-" * string(pkg_info["git-tree-sha1"])
         elseif get(pkg_info, "path", nothing)!==nothing
             # We have a deved package, we use the hash of the folder name
-            "-deved-" * bytes2hex(sha256(pkg_info["path"]))
+            "-deved-" * string(bytes2hex(sha256(pkg_info["path"])))
         else
             # We have a stdlib, we use the uuid
             "-stdlib-" * string(uuid)
@@ -171,10 +171,10 @@ else
 
         name_for_cash_file = if tree_hash!==nothing
             # We have a normal package, we use the tree hash
-            "-normal-" * tree_hash
+            "-normal-" * string(tree_hash)
         elseif pkg_info.path!==nothing
             # We have a deved package, we use the hash of the folder name
-            "-deved-" * bytes2hex(sha256(pkg_info.path))
+            "-deved-" * string(bytes2hex(sha256(pkg_info.path)))
         else
             # We have a stdlib, we use the uuid
             "-stdlib-" * string(uuid)
