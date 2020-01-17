@@ -50,6 +50,7 @@ end
     # is_stdlib(a,b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u, p) in manifest(context))
+    isinmanifest(manifest::Dict{String, Any}, uuid::String) = any(get(p[1], "uuid", "") == string(uuid) for (u, p) in manifest)
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
     isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
@@ -66,6 +67,14 @@ end
 
     function packagename(c::Pkg.Types.Context, uuid)
         for (n, p) in c.env.manifest
+            if get(first(p), "uuid", "") == string(uuid)
+                return n
+            end
+        end
+        return nothing
+    end
+    function packagename(manifest::Dict{String,Any}, uuid::String)
+        for (n, p) in manifest
             if get(first(p), "uuid", "") == string(uuid)
                 return n
             end
