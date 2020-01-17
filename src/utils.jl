@@ -163,7 +163,7 @@ else
     function get_filename_from_name(manifest, uuid)
         pkg_info = manifest[uuid]
 
-        name_for_cash_file = if pkg_info.tree_hash!==nothing
+        name_for_cash_file = if :tree_hash in fieldnames(typeof(pkg_info)) && pkg_info.tree_hash!==nothing
             # We have a normal package, we use the tree hash
             pkg_info.tree_hash
         elseif pkg_info.path!==nothing
