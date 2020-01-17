@@ -76,7 +76,7 @@ function _getdoc(x)
     # Packages can add methods to Docs.doc, and those can have a bug,
     # and we don't want that to kill the symbol server process
     try
-        return string(Docs.doc(x))
+        return replace(string(Docs.doc(x)), "(@ref)" => "")
     catch err
         @warn "Couldn't retrieve docs."
         return ""
