@@ -1,3 +1,9 @@
+@static if VERSION < v"1.1"
+    const PackageEntry = Vector{Dict{String,Any}}
+else
+    using Pkg.Types: PackageEntry
+end
+
 """
     manifest(c::Pkg.Types.Context)
 Retrieves the manifest of a Context.
@@ -44,6 +50,8 @@ end
     # is_stdlib(a,b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u, p) in manifest(context))
+    isinmanifest(manifest::Dict{String,Any}, uuid::AbstractString) = any(get(p[1], "uuid", "") == uuid for (u, p) in manifest)
+    isinmanifest(manifest::Dict{String,Any}, uuid::UUID) = isinmanifest(manifest, string(uuid))
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
     isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
@@ -66,6 +74,15 @@ end
         end
         return nothing
     end
+    function packagename(manifest::Dict{String,Any}, uuid::String)
+        for (n, p) in manifest
+            if get(first(p), "uuid", "") == string(uuid)
+                return n
+            end
+        end
+        return nothing
+    end
+    packagename(manifest::Dict{String,Any}, uuid::UUID) = packagename(manifest, string(uuid))
 
     function deps(uuid::UUID, c::Pkg.Types.Context)
         if any(p[1]["uuid"] == string(uuid) for (n, p) in manifest(c))
@@ -87,10 +104,35 @@ end
         end
         return nothing
     end
+    function frommanifest(manifest, uuid)
+        for (n, p) in manifest
+            if get(first(p), "uuid", "") == string(uuid)
+                return p
+            end
+        end
+        return nothing
+    end
+    function get_filename_from_name(manifest, uuid)
+        pkg_info = first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)])
+
+        name_for_cash_file = if get(pkg_info, "git-tree-sha1", nothing)!==nothing
+            "-normal-" * string(pkg_info["git-tree-sha1"])
+        elseif get(pkg_info, "path", nothing)!==nothing
+            # We have a deved package, we use the hash of the folder name
+            "-deved-" * string(bytes2hex(sha256(pkg_info["path"])))
+        else
+            # We have a stdlib, we use the uuid
+            "-stdlib-" * string(uuid)
+        end
+
+        return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
+    end
+    is_package_deved(manifest, uuid) = get(first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)]), "path", "") != ""
 else
     # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
     isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u, p) in manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = haskey(manifest(context), uuid)
+    isinmanifest(manifest::Dict{UUID, PackageEntry}, uuid::UUID) = haskey(manifest, uuid)
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
     isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
@@ -105,6 +147,7 @@ else
     packageuuid(pkg::Pair{String,UUID}) = last(pkg)
     packageuuid(pkg::Pair{UUID,PackageEntry}) = first(pkg)
     packagename(c::Pkg.Types.Context, uuid::UUID) = manifest(c)[uuid].name
+    packagename(manifest::Dict{UUID, PackageEntry}, uuid::UUID) = manifest[uuid].name
 
     function deps(uuid::UUID, c::Pkg.Types.Context)
         if haskey(manifest(c), uuid)
@@ -119,6 +162,28 @@ else
     path(pe::PackageEntry) = pe.path
     version(pe::PackageEntry) = pe.version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
+    frommanifest(manifest::Dict{UUID, PackageEntry}, uuid) = manifest[uuid]
+
+    function get_filename_from_name(manifest, uuid)
+        pkg_info = manifest[uuid]
+
+        tree_hash = VERSION >= v"1.3" ? pkg_info.tree_hash : get(pkg_info.other, "git-tree-sha1", nothing)
+
+        name_for_cash_file = if tree_hash!==nothing
+            # We have a normal package, we use the tree hash
+            "-normal-" * string(tree_hash)
+        elseif pkg_info.path!==nothing
+            # We have a deved package, we use the hash of the folder name
+            "-deved-" * string(bytes2hex(sha256(pkg_info.path)))
+        else
+            # We have a stdlib, we use the uuid
+            "-stdlib-" * string(uuid)
+        end
+
+        return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
+    end
+
+    is_package_deved(manifest, uuid) = manifest[uuid].path!==nothing
 end
 
 
@@ -182,24 +247,6 @@ end
 
 function sha_pkg(pe::PackageEntry)
     path(pe) isa String && isdir(path(pe)) && isdir(joinpath(path(pe), "src")) ? sha2_256_dir(joinpath(path(pe), "src")) : nothing
-end
-
-function _lookup(tr::PackageRef{N}, depot::Dict{String,ModuleStore}) where N
-    if haskey(depot, tr.name[1])
-        if N == 1
-            return depot[tr.name[1]]
-        else
-            return _lookup(tr, depot[tr.name[1]], 2)
-        end
-    end
-end
-
-function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
-    if i < N && haskey(m.vals, tr.name[i])
-        _lookup(tr, m.vals[tr.name[i]], i + 1)
-    elseif i == N && haskey(m.vals, tr.name[i])
-        return m.vals[tr.name[i]]
-    end
 end
 
 function hasfields(@nospecialize t)
