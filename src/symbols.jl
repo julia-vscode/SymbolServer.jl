@@ -119,7 +119,7 @@ function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
     end
 end
 
-function read_methods(x)
+function read_methods(x, M)
     if x isa Core.IntrinsicFunction
         return MethodStore[MethodStore("intrinsic-function", 0, [("args...", "Any")])]
     end
