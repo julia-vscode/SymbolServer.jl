@@ -1,65 +1,70 @@
 module SymbolServer
 
-conn = stdout
-(outRead, outWrite) = redirect_stdout()
+# Try to lower the priority of this process so that it doesn't block the
+# user system.
+@static if Sys.iswindows()
+    # Get process handle
+    p_handle = ccall(:GetCurrentProcess, stdcall, Ptr{Cvoid}, ())
+
+    # Set BELOW_NORMAL_PRIORITY_CLASS
+    ret = ccall(:SetPriorityClass, stdcall, Cint, (Ptr{Cvoid}, Culong), p_handle, 0x00004000)
+    ret != 1 && @warn "Something went wrong when setting BELOW_NORMAL_PRIORITY_CLASS."
+else
+    ret = ccall(:nice, Cint, (Cint,), 1)
+    # We don't check the return value because it doesn't really matter
+end
 
 module LoadingBay
 end
+
 using Serialization, Pkg, SHA
 using Base: UUID
-@static if VERSION < v"1.1"
-    const PackageEntry = Vector{Dict{String,Any}}
-else
-    using Pkg.Types: PackageEntry
-end
+
 include("symbols.jl")
 include("utils.jl")
 
 server = Server(abspath(joinpath(@__DIR__, "..", "store")), Pkg.Types.Context(), Dict{Any,Any}())
-if Sys.isunix()
-    global const nullfile = "/dev/null"
-elseif Sys.iswindows()
-    global const nullfile = "nul"
-else
-    error("Platform not supported")
-end
 
-function write_cache(uuid, pkg)
-    open(joinpath(server.storedir, "$uuid.jstore"), "w") do io
+function write_cache(name, pkg)
+    open(joinpath(server.storedir, name), "w") do io
         serialize(io, pkg)
     end
 end
 
-while true
-    message, payload = deserialize(stdin)
-    if message == :get_context
-        serialize(conn, (:success, server.context))
-    elseif message == :cache_package
-        for uuid in payload
-            cache_package(server.context, UUID(uuid), server.depot)
-        end
-        out = Tuple{String,String,Bool,Bool,Bool}[] # list of saved caches
-        for (uuid, pkg) in server.depot
-            overwrote = isfile(joinpath(server.storedir, "$(string(uuid)).jstore"))
-            write_cache(uuid, pkg)
+# First get a list of all package UUIds that we want to cache
+toplevel_pkgs = deps(project(Pkg.Types.Context()))
 
-            isloaded = can_access(LoadingBay, Symbol(packagename(server.context, uuid))) isa Module
-            issaved = isfile(joinpath(server.storedir, "$(string(uuid)).jstore"))
+# Next make sure the cache is up-to-date for all of these
+for (pk_name, uuid) in toplevel_pkgs
+    cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
 
-            push!(out, (string(uuid), packagename(server.context, uuid), isloaded, isloaded, overwrote))
+    if isfile(cache_path)
+        if is_package_deved(Pkg.Types.Context().env.manifest, uuid)
+            cached_version = open(cache_path) do io
+                deserialize(io)
+            end
+
+            if sha_pkg(frommanifest(Pkg.Types.Context().env.manifest, uuid)) != cached_version.sha
+                @info "Now recaching package $pk_name ($uuid)"
+                cache_package(server.context, uuid, server.depot)
+            else
+                @info "Package $pk_name ($uuid) is cached."
+            end
+        else
+            @info "Package $pk_name ($uuid) is cached."
         end
-        serialize(conn, (:success, out))
-    elseif message == :change_env
-        Pkg.API.activate(payload)
-        server.context = Pkg.Types.Context()
-        serialize(conn, (:success, nothing))
-    elseif message == :debugmessage
-        out = string(eval(Meta.parse(payload)))
-        serialize(conn, (:success, out))
-    elseif message == :close
-        break
     else
-        serialize(conn, (:failure, nothing))
+        @info "Now caching package $pk_name ($uuid)"
+        cache_package(server.context, uuid, server.depot)
     end
 end
+
+# Next write all package info to disc
+for (uuid, pkg) in server.depot
+    cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+
+    @info "Now writing to disc $uuid"
+    write_cache(cache_path, pkg)
+end
+
 end
