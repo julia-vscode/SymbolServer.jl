@@ -1,258 +1,126 @@
 module SymbolServer
-module LoadingBay
-end
-export SymbolServerProcess, change_env, load_manifest_packages, load_project_packages, get_context, getstore
+
+export SymbolServerInstance, getstore
 
 using Serialization, Pkg, SHA
 using Base: UUID
-@static if VERSION < v"1.1"
-    const PackageEntry = Vector{Dict{String,Any}}
-else
-    using Pkg.Types: PackageEntry
-end
+
 include("symbols.jl")
+include("utils.jl")
 
-mutable struct SymbolServerProcess
-    process::Base.Process
-    context::Union{Nothing,Pkg.Types.Context}
-    depot::Dict{String,ModuleStore}
+mutable struct SymbolServerInstance
+    process::Union{Nothing,Base.Process}
     process_stderr::Union{IOBuffer,Nothing}
+    depot_path::String
 
-    caching_packages::Set{UUID}
-    newly_cached_packages::Vector{UUID}
+    function SymbolServerInstance(depot_path::String)
+        return new(nothing, nothing, depot_path)
+    end
+end
 
-    function SymbolServerProcess(;environment = nothing, depot = nothing)
-        jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
-        server_script = joinpath(@__DIR__, "server.jl")
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, result_channel)
+    !ispath(environment_path) && error("Must specify an environment path.")
 
-        env_to_use = copy(ENV)
-        if depot !== nothing
-            if depot == ""
-                delete!(env_to_use, "JULIA_DEPOT_PATH")
+    jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+    server_script = joinpath(@__DIR__, "server.jl")
+
+    env_to_use = copy(ENV)
+
+    if ssi.depot_path==""
+        delete!(env_to_use, "JULIA_DEPOT_PATH")
+    else
+        env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
+    end
+
+    # TODO Put this back in once we have crash reporting back up
+    # stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()    
+    stderr_for_client_process = nothing
+
+    if ssi.process!==nothing
+        kill(ssi.process)
+    end
+
+    use_code_coverage = Base.JLOptions().code_coverage
+
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    ssi.process = p
+    ssi.process_stderr = stderr_for_client_process
+
+    @async begin
+        try
+            @info "Waiting for symbol server to finish"
+            if success(p)
+                @info "Symbol server finished."
+
+                # Now we create a new symbol store and load everything into that
+                # from disc
+                new_store = deepcopy(stdlibs)
+                load_project_packages_into_store!(ssi, environment_path, new_store)
+
+                @info "Push store to channel."
+                # Finally, we push the new store into the results channel
+                # Clients can pick it up from there
+                push!(result_channel, new_store)
+                @info "getstore is finished."
             else
-                env_to_use["JULIA_DEPOT_PATH"] = depot
+                @info "Symbol server failed."
             end
-        end
-
-        stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
-
-        p = if environment === nothing
-            open(pipeline(Cmd(`$jl_cmd --startup-file=no --compiled-modules=no --history-file=no $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
-        else
-            open(pipeline(Cmd(`$jl_cmd --startup-file=no --compiled-modules=no --history-file=no --project=$environment $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
-        end
-        ssp = new(p, nothing, deepcopy(stdlibs), stderr_for_client_process, Set{UUID}(), UUID[])
-        get_context(ssp)
-        return ssp
-    end
-end
-
-function Base.show(io::IO, ssp::SymbolServerProcess)
-    println(io, "SymbolServerProcess with $(length(ssp.depot)) ($(sum(!isempty(v.vals) for (k, v) in ssp.depot))) packages")
-
-    print(join(sort!([string(isempty(v.vals) ? " ** " : "    ", k) for (k, v) in ssp.depot], lt = (a, b)->a[5:end] < b[5:end]), "\n"))
-end
-
-
-function request(ssp::SymbolServerProcess, message::Symbol, payload)
-    serialize(ssp.process, (message, payload))
-    ret_val = try
-        deserialize(ssp.process)
-    catch err
-        # Only Julia 1.1 and newer support capturing stderr into an IOBuffer
-        if ssp.process_stderr !== nothing
-            stderr_from_client_process = String(take!(ssp.process_stderr))
-
-            complete_error_message = string(sprint(showerror, err), "\n\nstderr from client process:\n\n", stderr_from_client_process)
-
-            error(complete_error_message)
-        else
-            complete_error_message = string(sprint(showerror, err), "\n\nCouldn't capture stderr from client process on julia 1.0.\n\n")
-
-            error(complete_error_message)
+        catch err
+            Base.display_error(stderr, err, catch_backtrace())
         end
     end
-
-    !(ret_val isa Tuple{Symbol,<:Any}) && error("Invalid response:\n", ret_val)
-    return ret_val
 end
 
-"""
-    load_manifest_packages(ssp)
-Load all packages from the current active environments manifest into the client
-side depot.
-"""
-function load_manifest_packages(ssp::SymbolServerProcess)
-    # for uuid in keys(manifest(ssp.context))
-    for pkg in manifest(ssp.context)
-        load_package_cache(ssp, packageuuid(pkg))
-    end
-    update(ssp)
-end
+function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)
+    project_filename = isfile(joinpath(environment_path, "JuliaProject.toml")) ? joinpath(environment_path, "JuliaProject.toml") : joinpath(environment_path, "Project.toml")
+    project = Pkg.API.read_project(project_filename)
 
-function load_project_packages(ssp::SymbolServerProcess)
-    for uuid in values(deps(project(ssp.context)))
-        load_package_cache(ssp, uuid)
-    end
-    update(ssp)
-end
+    manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
+    manifest = Pkg.API.read_manifest(joinpath(environment_path, "Manifest.toml"))
 
-function getstore(ssp::SymbolServerProcess)
-    load_project_packages(ssp)
-    return ssp.depot
-end
-
-"""
-    get_context(ssp)
-Retrieves the active context (environment) from the server.
-"""
-function get_context(ssp::SymbolServerProcess)
-    status, payload = request(ssp, :get_context, nothing)
-    if status == :success
-        ssp.context = payload
-        return
-    else
-        error(payload)
-    end
-end
-"""
-    change_env(ssp, env_path)
-Activates a new environment on the server. The new active context must then be retrieved separately.
-"""
-function change_env(ssp::SymbolServerProcess, env_path::String)
-    status, payload = request(ssp, :change_env, env_path)
-    if status == :success
-        return payload
-    else
-        error(payload)
+    for uuid in values(deps(project))
+        load_package_from_cache_into_store!(ssi, uuid, manifest, store)
     end
 end
 
-
 """
-    load_package_cache(ssp::SymbolServerProcess, uuid::UUID)
+    load_package_from_cache_into_store!(ssp::SymbolServerInstance, uuid, store)
+
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
-function load_package_cache(ssp::SymbolServerProcess, uuid::UUID)
+function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
     storedir = abspath(joinpath(@__DIR__, "..", "store"))
-    cache_path = joinpath(storedir, string(uuid, ".jstore"))
+    cache_path = joinpath(storedir, get_filename_from_name(manifest, uuid))
 
-    if !isinmanifest(ssp.context, uuid)
+    if !isinmanifest(manifest, uuid)
         @info "Tried to load $uuid but failed to find it in the manifest."
         return
     end
 
-    pe = frommanifest(ssp.context, uuid)
-    pe_name = packagename(ssp.context, uuid)
+    pe = frommanifest(manifest, uuid)
+    pe_name = packagename(manifest, uuid)
+
+    haskey(store, pe_name) && return
+
+    @info "Loading $pe_name from cache."
+
     if isfile(cache_path)
         try
-            store = open(cache_path) do io
+            package_data = open(cache_path) do io
                 deserialize(io)
             end
-            if version(pe) != store.ver || (store.ver isa String && endswith(store.ver, "+") && sha_pkg(pe) != store.sha)
-                @info "$pe_name changed, updating cache."
-                cache_package(ssp, uuid)
-                store = open(cache_path) do io
-                    deserialize(io)
-                end
-            end
-            ssp.depot[pe_name] = store.val
+            store[pe_name] = package_data.val
             for dep in deps(pe)
-                load_dependency_cache(ssp, packageuuid(dep))
+                load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store)
             end
         catch err
+            Base.display_error(stderr, err, catch_backtrace())
             @info "Tried to load $pe_name but failed to load from disc, re-caching."
-            if err isa UndefVarError && err.var in (:structStore, :abstractStore)
-                @info "Package cache pre-v3.0"
-            end
             rm(cache_path)
-            cache_package(ssp, uuid)
         end
     else
         @info "$(pe_name) not stored on disc"
-        cache_package(ssp, uuid)
     end
-end
-
-function load_dependency_cache(ssp::SymbolServerProcess, uuid::UUID)
-    storedir = abspath(joinpath(@__DIR__, "..", "store"))
-    cache_path = joinpath(storedir, string(uuid, ".jstore"))
-    if !isinmanifest(ssp.context, uuid)
-        @info "Tried to load $uuid cache as a dependency but failed to find it in the manifest."
-        return
-    end
-    pe = frommanifest(ssp.context, uuid)
-    pe_name = packagename(ssp.context, uuid)
-    haskey(ssp.depot, pe_name) && return
-    @info "loading dependency $pe_name"
-    if isfile(cache_path)
-        try
-            store = open(cache_path) do io
-                deserialize(io)
-            end
-            if version(pe) != store.ver || (store.ver isa String && endswith(store.ver, "+") && sha_pkg(pe) != store.sha)
-                @info "Tried to load $pe_name cache as a dependency but failed."
-            end
-            ssp.depot[pe_name] = store.val
-            for dep in deps(pe)
-                load_dependency_cache(ssp, packageuuid(dep))
-            end
-        catch err
-            if err isa UndefVarError && err.var in (:structStore, :abstractStore)
-                @info "Package cache pre-v3.0"
-            end
-            # rm(cache_path)
-            # cache_package(ssp, uuid)
-        end
-    else
-        @info "Tried to load $pe_name cache as a dependency but no file found."
-        # cache_package(ssp, uuid)
-    end
-
-end
-
-load_package_cache(ssp::SymbolServerProcess, uuid::String) = load_package_cache(ssp, UUID(uuid))
-
-function Base.kill(server::SymbolServerProcess)
-    serialize(server.process, (:close, nothing))
-end
-"""
-    cache_package(ssp, uuid::Union{UUID, Vector{UUID}})
-Sends a request to the server to cache a package or collection of packages.
-Requested packages are added to the list `ssp.caching_packages` to prevent the
-sending multiple requests for the same package.
-
-The server returns a list of packages that it has loaded and adds it to
-`ssp.newly_cached_packages`. This list should be used to `update` the client side
-depot `ssp.depot`.
-"""
-cache_package(ssp::SymbolServerProcess, uuid::UUID) = cache_package(ssp, [uuid])
-function cache_package(ssp::SymbolServerProcess, uuid::Vector{UUID})
-    if uuid in ssp.caching_packages
-        return
-    end
-    union!(ssp.caching_packages, uuid)
-    status, payload = request(ssp, :cache_package, string.(uuid))
-    if status == :success
-        for u in uuid
-            delete!(ssp.caching_packages, u)
-        end
-        append!(ssp.newly_cached_packages, UUID.(first(p) for p in payload))
-        return payload
-    else
-        error(payload)
-    end
-end
-
-"""
-    update(ssp)
-Update the client side depot with newly cached packages.
-"""
-function update(ssp::SymbolServerProcess)
-    for uuid in ssp.newly_cached_packages
-        load_package_cache(ssp, uuid)
-    end
-    empty!(ssp.newly_cached_packages)
 end
 
 function clear_disc_store()
@@ -263,6 +131,7 @@ function clear_disc_store()
         end
     end
 end
-include("utils.jl")
+
 const stdlibs = load_core()
+
 end # module
