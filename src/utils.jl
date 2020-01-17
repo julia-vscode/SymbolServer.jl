@@ -51,6 +51,7 @@ end
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u, p) in manifest(context))
     isinmanifest(manifest::Dict{String,Any}, uuid::AbstractString) = any(get(p[1], "uuid", "") == uuid for (u, p) in manifest)
+    isinmanifest(manifest::Dict{String,Any}, uuid::UUID) = isinmanifest(manifest, string(uuid))
 
     isinproject(context::Pkg.Types.Context, package_name::String) = haskey(deps(project(context)), package_name)
     isinproject(context::Pkg.Types.Context, package_uuid::UUID) = any(u == package_uuid for (n, u) in deps(project(context)))
@@ -81,6 +82,7 @@ end
         end
         return nothing
     end
+    packagename(manifest::Dict{String,Any}, uuid::UUID) = packagename(manifest, string(uuid))
 
     function deps(uuid::UUID, c::Pkg.Types.Context)
         if any(p[1]["uuid"] == string(uuid) for (n, p) in manifest(c))
@@ -113,12 +115,14 @@ end
     function get_filename_from_name(manifest, uuid)
         pkg_info = first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)])
 
-        name_for_cash_file = if get(pkg_info, "path", "")!= ""
+        name_for_cash_file = if get(pkg_info, "git-tree-sha1", nothing)!==nothing
+            "-normal-" * pkg_info["git-tree-sha1"]
+        elseif get(pkg_info, "path", nothing)!==nothing
             # We have a deved package, we use the hash of the folder name
-            bytes2hex(sha256(pkg_info["path"]))
+            "-deved-" * bytes2hex(sha256(pkg_info["path"]))
         else
             # We have a stdlib, we use the uuid
-            string(uuid)
+            "-stdlib-" * string(uuid)
         end
 
         return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
@@ -163,15 +167,17 @@ else
     function get_filename_from_name(manifest, uuid)
         pkg_info = manifest[uuid]
 
-        name_for_cash_file = if :tree_hash in fieldnames(typeof(pkg_info)) && pkg_info.tree_hash!==nothing
+        tree_hash = VERSION >= v"1.3" ? pkg_info.tree_hash : get(pkg_info.other, "git-tree-sha1", nothing)
+
+        name_for_cash_file = if tree_hash!==nothing
             # We have a normal package, we use the tree hash
-            pkg_info.tree_hash
+            "-normal-" * tree_hash
         elseif pkg_info.path!==nothing
             # We have a deved package, we use the hash of the folder name
-            bytes2hex(sha256(pkg_info.path))
+            "-deved-" * bytes2hex(sha256(pkg_info.path))
         else
             # We have a stdlib, we use the uuid
-            string(uuid)
+            "-stdlib-" * string(uuid)
         end
 
         return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"

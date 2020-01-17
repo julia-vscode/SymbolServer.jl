@@ -10,20 +10,17 @@ using Test
         cp(joinpath(@__DIR__, "testenv", "Manifest.toml"), joinpath(path, "Manifest.toml"))
 
         jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
-        run(`$jl_cmd --project=$path --startup-file=no -e 'using Pkg; Pkg.instantiate(); pkg"dev --local TableTraits"'`)
+        run(`$jl_cmd --project=$path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
 
         ssi = SymbolServerInstance("")
         results = Channel(Inf)
         getstore(ssi, path, results)
         store = take!(results)
 
+        @test length(store) == 6
         @test haskey(store, "Core")
-        @test haskey(store, "Base")
-        if !(VERSION < v"1.1")
-            # Different deps?
-            @test length(store) == 6
-            @test haskey(store, "Base64")
-        end
+        @test haskey(store, "Base")        
+        @test haskey(store, "Base64")
         @test haskey(store, "IteratorInterfaceExtensions")
         @test haskey(store, "Markdown")
         @test haskey(store, "TableTraits")

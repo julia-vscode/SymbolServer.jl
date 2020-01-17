@@ -114,6 +114,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
                 load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store)
             end
         catch err
+            Base.display_error(stderr, err, catch_backtrace())
             @info "Tried to load $pe_name but failed to load from disc, re-caching."
             rm(cache_path)
         end
