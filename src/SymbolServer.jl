@@ -69,6 +69,8 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
             Base.display_error(stderr, err, catch_backtrace())
         end
     end
+
+    return
 end
 
 function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)

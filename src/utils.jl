@@ -28,24 +28,6 @@ Checks whether a package is in the manifest of a given context, e.g. is either d
 """
 function isinmanifest end
 
-"""
-    find_parent(c, package::Union{String,UUID})
-Finds all loadable packages for which `package` is a dependency.
-"""
-find_parent(c::Pkg.Types.Context, name::String, out = Set{UUID}()) = find_parent(c, packageuuid(c, name), out)
-function find_parent(c::Pkg.Types.Context, uuid::UUID, out = Set{UUID}())
-    for pkg in manifest(c)
-        if uuid in values(deps(packageuuid(pkg), c))
-            if isinproject(c, packagename(pkg))
-                push!(out, packageuuid(pkg))
-            else
-                find_parent(c, packageuuid(pkg), out)
-            end
-        end
-    end
-    return out
-end
-
 @static if VERSION < v"1.1"
     # is_stdlib(a,b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
@@ -184,49 +166,6 @@ else
     end
 
     is_package_deved(manifest, uuid) = manifest[uuid].path!==nothing
-end
-
-
-"""
-    tryaccess(root::Module, target::Symbol, visited = Set{Module}())
-Traverses all submodules of `root` to search for the module `target`.
-"""
-function tryaccess(root::Module, target::Symbol, visited = Set{Module}())
-    root in visited && return nothing
-    push!(visited, root)
-    try
-        return getfield(root, target)
-    catch err
-    end
-    for n in names(root, all = true, imported = true)
-        !isdefined(root, n) && continue
-        x = getfield(root, n)
-        if x isa Module
-            y = tryaccess(x, target, visited)
-            if y isa Module && nameof(y) == target
-                return y
-            end
-        end
-    end
-    return nothing
-end
-
-function can_access(m::Module, s::Symbol)
-    try
-        return Base.eval(m, :($m.$s))
-    catch
-        return nothing
-    end
-end
-
-function change_env(c, pe)
-    if path(pe) isa String
-        env_path = path(pe)
-        Pkg.API.activate(env_path)
-    elseif !is_stdlib(c, packageuuid(pe)) && ((Pkg.API.dir(packagename(pe)) isa String) && !isempty(Pkg.API.dir(packagename(pe))))
-        env_path = Pkg.API.dir(packagename(pe))
-        Pkg.API.activate(env_path)
-    end
 end
 
 function sha2_256_dir(path, sha = sha = zeros(UInt8, 32))
