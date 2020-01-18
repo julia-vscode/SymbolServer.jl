@@ -56,6 +56,7 @@ end
 struct FunctionStore <: SymStore
     methods::Vector{MethodStore}
     doc::String
+    extends::Union{Nothing,PackageRef}
 end
 
 struct DataTypeStore <: SymStore
@@ -90,6 +91,16 @@ else
     kwarg_decl = Base.kwarg_decl
 end
 
+function _parentmodules_comp(m::Module, M)
+    if m == M
+        return true
+    elseif parentmodule(m) != m
+        return _parentmodules_comp(parentmodule(m), M)
+    else
+        return false
+    end
+end
+
 function _lookup(tr::PackageRef{N}, depot::Dict{String,ModuleStore}) where N
     if haskey(depot, tr.name[1])
         if N == 1
@@ -108,12 +119,14 @@ function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
     end
 end
 
-function read_methods(x)
+function read_methods(x, M)
     if x isa Core.IntrinsicFunction
         return MethodStore[MethodStore("intrinsic-function", 0, [("args...", "Any")])]
     end
     ms = methods(x)
-    ms1 = map(ms) do m
+    ms1 = MethodStore[]
+    for m in ms
+        # !_parentmodules_comp(m.module, M) && parentmodule(x) != m && continue
         path = isabspath(String(m.file)) ? String(m.file) : Base.find_source_file(String(m.file))
         if path === nothing
             path = ""
@@ -136,9 +149,9 @@ function read_methods(x)
                 args[i] = (args[i][1], "Any")
             end
         end
-        MethodStore(path,
+        push!(ms1, MethodStore(path,
                     m.line,
-                    args)
+                    args))
     end
     for i in 1:length(ms1)
         for j = i + 1:length(ms1)
@@ -173,7 +186,7 @@ function load_core()
 
     # Add special cases
     push!(depot["Base"].exported, "include")
-    append!(depot["Base"].vals["include"].methods, read_methods(Base.MainInclude.include))
+    append!(depot["Base"].vals["include"].methods, read_methods(Base.MainInclude.include, Base.MainInclude))
     depot["Base"].vals["@."] = depot["Base"].vals["@__dot__"]
     push!(depot["Base"].exported, "@.")
     depot["Core"].vals["Main"] = genericStore("Module", [], _getdoc(Main))
@@ -183,7 +196,7 @@ function load_core()
         if haskey(depot["Core"].vals, f)
             push!(depot["Core"].vals[f].methods, MethodStore("built-in", 0, [("args...", "Any")]))
         else
-            depot["Core"].vals[f] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("args...", "Any")])], _getdoc(getfield(Core, Symbol(f))))
+            depot["Core"].vals[f] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("args...", "Any")])], _getdoc(getfield(Core, Symbol(f))), nothing)
         end
     end
     haskey(depot["Core"].vals, "_typevar") && push!(depot["Core"].vals["_typevar"].methods, MethodStore("built-in", 0, [("n", "Symbol"), ("lb", "Any"), ("ub", "Any")]))
@@ -195,8 +208,8 @@ function load_core()
     haskey(depot["Core"].vals, "const_arrayref") && push!(depot["Core"].vals["const_arrayref"].methods, MethodStore("built-in", 0, [("args...", "Any")]))
 
     push!(depot["Core"].exported, "ccall")
-    depot["Core"].vals["ccall"] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("(function_name, library", "Any"), ("returntype", "Any"), ("(argtype1, ...", "Tuple"), ("argvalue1, ...", "Any")])], "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.")
-    depot["Core"].vals["@__doc__"] = FunctionStore(read_methods(getfield(Core, Symbol("@__doc__"))), _getdoc(getfield(Core, Symbol("@__doc__"))))
+    depot["Core"].vals["ccall"] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("(function_name, library", "Any"), ("returntype", "Any"), ("(argtype1, ...", "Tuple"), ("argvalue1, ...", "Any")])], "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.", nothing)
+    depot["Core"].vals["@__doc__"] = FunctionStore(read_methods(getfield(Core, Symbol("@__doc__")), Core), _getdoc(getfield(Core, Symbol("@__doc__"))), nothing)
     return depot
 end
 
@@ -213,12 +226,18 @@ function get_module(m::Module, pkg_deps = Set{String}())
             x = getfield(m, n)
             t, p = collect_params(x)
             if x isa Function
-                out.vals[String(n)] = FunctionStore(read_methods(x), _getdoc(x))
+                if parentmodule(x) == x 
+                    extends = nothing
+                else
+                    pm = String.(split(string(Base.parentmodule(x)), "."))
+                    extends = PackageRef(ntuple(i-> pm[i], length(pm)))
+                end
+                out.vals[String(n)] = FunctionStore(read_methods(x, m), _getdoc(x), extends)
             elseif t isa DataType
                 out.vals[String(n)] = DataTypeStore(string.(p),
                                 hasfields(t) ? collect(string.(fieldnames(t))) : String[],
                                 get_fieldtypes(t),
-                                t == Vararg ? [] : read_methods(x),
+                                t == Vararg ? [] : read_methods(x, m),
                                 _getdoc(x))
             elseif x isa Module && x != m # include reference to current module
                 n == :Main && continue
