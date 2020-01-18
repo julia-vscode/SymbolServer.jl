@@ -1,5 +1,7 @@
 module SymbolServer
 
+start_time = time_ns()
+
 # Try to lower the priority of this process so that it doesn't block the
 # user system.
 @static if Sys.iswindows()
@@ -66,5 +68,10 @@ for  (uuid, pkg) in server.depot
     @info "Now writing to disc $uuid"
     write_cache(cache_path, pkg)
 end
+
+end_time = time_ns()
+
+elapsed_time_in_s = (end_time-start_time)/1e9
+@info "Symbol server indexing took $elapsed_time_in_s seconds."
 
 end
