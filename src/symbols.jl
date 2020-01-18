@@ -126,7 +126,7 @@ function read_methods(x, M)
     ms = methods(x)
     ms1 = MethodStore[]
     for m in ms
-        !_parentmodules_comp(m.module, M) && parentmodule(x) != m && continue
+        # !_parentmodules_comp(m.module, M) && parentmodule(x) != m && continue
         path = isabspath(String(m.file)) ? String(m.file) : Base.find_source_file(String(m.file))
         if path === nothing
             path = ""
