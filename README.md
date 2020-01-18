@@ -12,14 +12,16 @@ Documentation for working with Julia environments is available [here](https://gi
 ## API
 
 ```julia
-SymbolServerInstance(path_to_depot)
+SymbolServerInstance(path_to_depot, path_to_store)
 ```
 
-Creates a new symbol server instance that works on a given Julia depot. This symbol server instance can be long lived, i.e. one can re-use it for different environments etc.
+Creates a new symbol server instance that works on a given Julia depot. This symbol server instance can be long lived, i.e. one can re-use it for different environments etc. If `path_to_store` is specified, cache files will be stored there, otherwise a standard location will be used.
 
 
 ```julia
-getstore(ssi::SymbolServerInstance, environment_path::AbstractString, result_channel)
+getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
 ```
 
-Initiates async loading of symbols for the environment in `environment_path`. This function is non blocking, i.e. it returns immediately before the actual work is finished. `result_channel` must be a `Channel`. The new store, once loaded, will be pushed to that channel. One can call this function repeatedly, even before a previous call has returned results. In that case, the previous load attemp is canceled.
+Loads the symbols for the environment in `environment_path`. Returns a tuple, where the first element is a return status and the second element a payload. The status can be `:success` (in which case the second element is the new store), `:canceled` if another call to `getstore` was initiated before a previous one finished (with `nothing` as the payload), or `:failure` with the payload being the content of the error stream of the client process.
+
+This function is long running and should typically be called in an `@async` block.

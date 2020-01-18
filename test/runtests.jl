@@ -9,22 +9,37 @@ using Test
         cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
         cp(joinpath(@__DIR__, "testenv", "Manifest.toml"), joinpath(path, "Manifest.toml"))
 
+        store_path = joinpath(path, "store")
+        mkpath(store_path)
+
         jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
         run(`$jl_cmd --project=$path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
 
-        ssi = SymbolServerInstance("")
-        results = Channel(Inf)
-        getstore(ssi, path, results)
-        store = take!(results)
+        ssi = SymbolServerInstance("", store_path)
 
-        @test length(store) == 6
-        @test haskey(store, "Core")
-        @test haskey(store, "Base")        
-        @test haskey(store, "Base64")
-        @test haskey(store, "IteratorInterfaceExtensions")
-        @test haskey(store, "Markdown")
-        @test haskey(store, "TableTraits")
+        @async begin
+            ret_status, store = getstore(ssi, path)
 
-        # TODO Test more things that should be present in the store
+            @test ret_status == :canceled
+        end
+
+        # We sleep for a second here to make sure the async task we started
+        # previously gets run first
+        sleep(1)
+
+        ret_status2, store2 = getstore(ssi, path)
+
+        @test ret_status2 == :success
+        @test length(store2) == 6
+        @test haskey(store2, "Core")
+        @test haskey(store2, "Base")        
+        @test haskey(store2, "Base64")
+        @test haskey(store2, "IteratorInterfaceExtensions")
+        @test haskey(store2, "Markdown")
+        @test haskey(store2, "TableTraits")
+
+        SymbolServer.clear_disc_store(ssi)
+
+        @test length(readdir(store_path)) == 0
     end
 end
