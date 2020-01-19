@@ -3,22 +3,23 @@ module SymbolServer
 export SymbolServerInstance, getstore
 
 using Serialization, Pkg, SHA
-using Base: UUID
+using Base: UUID, Process
 
 include("symbols.jl")
 include("utils.jl")
 
 mutable struct SymbolServerInstance
     process::Union{Nothing,Base.Process}
-    process_stderr::Union{IOBuffer,Nothing}
     depot_path::String
+    canceled_processes::Set{Process}
+    store_path::String
 
-    function SymbolServerInstance(depot_path::String)
-        return new(nothing, nothing, depot_path)
+    function SymbolServerInstance(depot_path::String = "", store_path::String = abspath(joinpath(@__DIR__, "..", "store")))
+        return new(nothing, depot_path, Set{Process}(), store_path)
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, result_channel)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
     !ispath(environment_path) && error("Must specify an environment path.")
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -32,42 +33,39 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, r
         env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
     end
 
-    # TODO Put this back in once we have crash reporting back up
-    # stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
-    stderr_for_client_process = nothing
+    stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
 
     if ssi.process !== nothing
-        kill(ssi.process)
+        to_cancel_p = ssi.process
+        ssi.process = nothing
+        push!(ssi.canceled_processes, to_cancel_p)
+        kill(to_cancel_p)
     end
 
     use_code_coverage = Base.JLOptions().code_coverage
 
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path)`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
     ssi.process = p
-    ssi.process_stderr = stderr_for_client_process
 
-    @async begin
-        try
-            @info "Waiting for symbol server to finish"
-            if success(p)
-                @info "Symbol server finished."
+    @info "Waiting for symbol server to finish"
+    if success(p)
+        @info "Symbol server finished."
 
-                # Now we create a new symbol store and load everything into that
-                # from disc
-                new_store = deepcopy(stdlibs)
-                load_project_packages_into_store!(ssi, environment_path, new_store)
+        # Now we create a new symbol store and load everything into that
+        # from disc
+        new_store = deepcopy(stdlibs)
+        load_project_packages_into_store!(ssi, environment_path, new_store)
 
-                @info "Push store to channel."
-                # Finally, we push the new store into the results channel
-                # Clients can pick it up from there
-                push!(result_channel, new_store)
-                @info "getstore is finished."
-            else
-                @info "Symbol server failed."
-            end
-        catch err
-            Base.display_error(stderr, err, catch_backtrace())
-        end
+        @info "Successfully loaded store from disc."
+        return :success, new_store
+    elseif p in ssi.canceled_processes
+        @info "Symbol server was canceled."
+        delete!(ssi.canceled_processes, p)
+
+        return :canceled, nothing
+    else
+        @info "Symbol server failed."
+        return :failure, stderr_for_client_process
     end
 end
 
@@ -89,8 +87,7 @@ end
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
-    storedir = abspath(joinpath(@__DIR__, "..", "store"))
-    cache_path = joinpath(storedir, get_filename_from_name(manifest, uuid))
+    cache_path = joinpath(ssi.store_path, get_filename_from_name(manifest, uuid))
 
     if !isinmanifest(manifest, uuid)
         @info "Tried to load $uuid but failed to find it in the manifest."
@@ -123,11 +120,10 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     end
 end
 
-function clear_disc_store()
-    storedir = abspath(joinpath(@__DIR__, "..", "store"))
-    for f in readdir(storedir)
+function clear_disc_store(ssi::SymbolServerInstance)
+    for f in readdir(ssi.store_path)
         if endswith(f, ".jstore")
-            rm(joinpath(storedir, f))
+            rm(joinpath(ssi.store_path, f))
         end
     end
 end

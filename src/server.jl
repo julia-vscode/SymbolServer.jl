@@ -25,7 +25,9 @@ using Base: UUID
 include("symbols.jl")
 include("utils.jl")
 
-server = Server(abspath(joinpath(@__DIR__, "..", "store")), Pkg.Types.Context(), Dict{Any,Any}())
+store_path = length(ARGS) == 1 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
+
+server = Server(store_path, Pkg.Types.Context(), Dict{Any,Any}())
 
 function write_cache(name, pkg)
     open(joinpath(server.storedir, name), "w") do io
