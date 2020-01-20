@@ -12,29 +12,16 @@ Documentation for working with Julia environments is available [here](https://gi
 ## API
 
 ```julia
-SymbolServerProcess(path_to_env)
+SymbolServerInstance(path_to_depot, path_to_store)
 ```
-Launches a server process (with given enviroment) and retrieves the active context. This client side process (this) contains a depot of retrieved packages.
 
-```julia
-change_env(ssp::SymbolServerProcess, env_path::String)
-```
-Activates a new environment on the server. The new active context must then be retrieved separately.
-
-```julia
-get_context(ssp::SymbolServerProcess)
-```
-Retrieves the active context (environment) from the server.
+Creates a new symbol server instance that works on a given Julia depot. This symbol server instance can be long lived, i.e. one can re-use it for different environments etc. If `path_to_store` is specified, cache files will be stored there, otherwise a standard location will be used.
 
 
 ```julia
-load_manifest_packages(ssp)
-load_project_packages(ssp)
+getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
 ```
-Load all packages from the current active environments manifest or project into the client
-side depot.
 
+Loads the symbols for the environment in `environment_path`. Returns a tuple, where the first element is a return status and the second element a payload. The status can be `:success` (in which case the second element is the new store), `:canceled` if another call to `getstore` was initiated before a previous one finished (with `nothing` as the payload), or `:failure` with the payload being the content of the error stream of the client process.
 
-
-
-
+This function is long running and should typically be called in an `@async` block.

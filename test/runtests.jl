@@ -4,53 +4,42 @@ using Base:UUID
 using Test
 
 @testset "SymbolServer" begin
-    server = SymbolServerProcess()
 
-    @test server isa SymbolServerProcess
-    @test server.context isa Pkg.Types.Context
-    SymbolServer.get_context(server)
-    @test server.context isa Pkg.Types.Context
-    @test "SymbolServer" in keys(deps(project(server.context)))
-    @test SymbolServer.isinproject(server.context, "SymbolServer")
-    @test SymbolServer.isinmanifest(server.context, "SymbolServer")
+    mktempdir() do path
+        cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
+        cp(joinpath(@__DIR__, "testenv", "Manifest.toml"), joinpath(path, "Manifest.toml"))
 
-    @test all(d in keys(deps(project(server.context))) for d in ("LibGit2", "Pkg", "SHA", "Serialization"))
+        store_path = joinpath(path, "store")
+        mkpath(store_path)
 
-    uuid = packageuuid(server.context, "SymbolServer")
-    @test uuid isa UUID
+        jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+        run(`$jl_cmd --project=$path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
 
+        ssi = SymbolServerInstance("", store_path)
 
-    pe = frommanifest(server.context, uuid)
-    @test pe isa SymbolServer.PackageEntry
+        @async begin
+            ret_status, store = getstore(ssi, path)
 
+            @test ret_status == :canceled
+        end
 
-    @test !isempty(server.depot["Base"].vals)
-    @test !isempty(server.depot["Core"].vals)
+        # We sleep for a second here to make sure the async task we started
+        # previously gets run first
+        sleep(1)
 
-    @testset "Cache package on client side" begin
-        depot = Dict{UUID,Package}()
-        ss_m = SymbolServer.cache_package(server.context, uuid, depot)
-        @test any(p->p[2].name == "SymbolServer", depot)
-        @test any(p->p[2].name == "Pkg", depot)
-        @test any(p->p[2].name == "SHA", depot)
-    end
+        ret_status2, store2 = getstore(ssi, path)
 
-    @testset "Cache package on server side" begin
-        uuid = packageuuid(server.context, "SHA")
-        SymbolServer.cache_package(server, uuid)
-        SymbolServer.update(server)
-        @test "SHA" in keys(server.depot)
-    end
+        @test ret_status2 == :success
+        @test length(store2) == 6
+        @test haskey(store2, "Core")
+        @test haskey(store2, "Base")        
+        @test haskey(store2, "Base64")
+        @test haskey(store2, "IteratorInterfaceExtensions")
+        @test haskey(store2, "Markdown")
+        @test haskey(store2, "TableTraits")
 
-    @testset "Load manifest packages" begin
-        SymbolServer.load_manifest_packages(server)
-        kill(server)
-    end
+        SymbolServer.clear_disc_store(ssi)
 
-    @testset "Load project packages" begin
-        server = SymbolServerProcess()
-        SymbolServer.load_project_packages(server)
-        @test all(k in keys(server.depot) for k in ("LibGit2", "Pkg", "SHA", "Serialization"))
-        kill(server)
+        @test length(readdir(store_path)) == 0
     end
 end
