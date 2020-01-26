@@ -47,24 +47,18 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
     p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path)`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
     ssi.process = p
 
-    @info "Waiting for symbol server to finish"
     if success(p)
-        @info "Symbol server finished."
-
         # Now we create a new symbol store and load everything into that
         # from disc
         new_store = deepcopy(stdlibs)
         load_project_packages_into_store!(ssi, environment_path, new_store)
 
-        @info "Successfully loaded store from disc."
         return :success, new_store
     elseif p in ssi.canceled_processes
-        @info "Symbol server was canceled."
         delete!(ssi.canceled_processes, p)
         
         return :canceled, nothing
     else
-        @info "Symbol server failed."
         return :failure, stderr_for_client_process
     end
 end
@@ -90,7 +84,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     cache_path = joinpath(ssi.store_path, get_filename_from_name(manifest, uuid))
 
     if !isinmanifest(manifest, uuid)
-        @info "Tried to load $uuid but failed to find it in the manifest."
+        @warn "Tried to load $uuid but failed to find it in the manifest."
         return
     end
 
@@ -98,8 +92,6 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     pe_name = packagename(manifest, uuid)
 
     haskey(store, pe_name) && return
-
-    @info "Loading $pe_name from cache."
 
     if isfile(cache_path)
         try
@@ -112,11 +104,11 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
             end
         catch err
             Base.display_error(stderr, err, catch_backtrace())
-            @info "Tried to load $pe_name but failed to load from disc, re-caching."
+            @warn "Tried to load $pe_name but failed to load from disc, re-caching."
             rm(cache_path)
         end
     else
-        @info "$(pe_name) not stored on disc"
+        @warn "$(pe_name) not stored on disc"
     end
 end
 
