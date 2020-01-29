@@ -49,6 +49,25 @@ function _doc(binding::Base.Docs.Binding, sig::Type = Union{})
     end
 end
 
+function _parsedoc(d::Base.Docs.DocStr)
+    if d.object === nothing
+        md = formatdoc(d)
+        md.meta[:module] = d.data[:module]
+        md.meta[:path]   = d.data[:path]
+        d.object = md
+    end
+    d.object
+end
+
+function formatdoc(d::Base.Docs.DocStr)
+    buffer = IOBuffer()
+    for part in d.text
+        formatdoc(buffer, d, part)
+    end
+    Markdown.MD(Any[Markdown.parse(seekstart(buffer))])
+end
+@noinline formatdoc(buffer, d, part) = print(buffer, part)
+
 function _summarize(binding::Base.Docs.Binding, sig)
     io = IOBuffer()
     println(io, "No documentation found.\n")
