@@ -34,6 +34,8 @@ function write_cache(name, pkg)
         serialize(io, pkg)
     end
 end
+# List of caches that have already been written
+written_caches = String[]
 
 # First get a list of all package UUIds that we want to cache
 toplevel_pkgs = deps(project(Pkg.Types.Context()))
@@ -60,15 +62,15 @@ for (pk_name, uuid) in toplevel_pkgs
     else
         @info "Now caching package $pk_name ($uuid)"
         cache_package(server.context, uuid, server.depot)
+        # Next write all package info to disc
+        for  (uuid, pkg) in server.depot
+            cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+            cache_path in written_caches && continue
+            push!(written_caches, cache_path)
+            @info "Now writing to disc $uuid"
+            write_cache(cache_path, pkg)
+        end
     end
-end
-
-# Next write all package info to disc
-for  (uuid, pkg) in server.depot
-    cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
-
-    @info "Now writing to disc $uuid"
-    write_cache(cache_path, pkg)
 end
 
 end_time = time_ns()
