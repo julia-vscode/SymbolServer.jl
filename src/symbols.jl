@@ -23,6 +23,7 @@ end
 TypeRef(t::TypeVar) = TypeRef("Any", PackageRef(("Core",)))
 TypeRef(t::Union) = TypeRef("Any", PackageRef(("Core",)))
 TypeRef(t::Type{T}) where T = TypeRef("Any", PackageRef(("Core",)))
+TypeRef(t::UnionAll) = TypeRef(Base.unwrap_unionall(t))
 function TypeRef(t::DataType)
     pm = String.(split(string(Base.parentmodule(t)), "."))
     pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm))))
