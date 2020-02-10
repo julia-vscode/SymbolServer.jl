@@ -203,8 +203,8 @@ function get_module(m::Module, pkg_deps = Set{String}())
     for n in allnames
         !isdefined(m, n) && continue
         startswith(string(n), "#") && continue
-        if Base.isdeprecated(m, n)
-        else
+        Base.isdeprecated(m, n) && continue
+        try
             x = getfield(m, n)
             t, p = collect_params(x)
             if x isa Function
@@ -233,6 +233,8 @@ function get_module(m::Module, pkg_deps = Set{String}())
             else
                 out.vals[String(n)] = genericStore(string(typeof(x)), [], _getdoc(x))
             end
+        catch err
+            out.vals[String(n)] = genericStore("Any", [], "Variable could not be cached.")
         end
     end
 
