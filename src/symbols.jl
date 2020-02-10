@@ -1,11 +1,5 @@
 using LibGit2
 
-@static if VERSION < v"1.2"
-    is_stdlib(ctx::Pkg.Types.Context, uuid::UUID) = uuid in keys(ctx.stdlibs)
-else
-    const is_stdlib = Pkg.Types.is_stdlib
-end
-
 mutable struct Server
     storedir::String
     context::Pkg.Types.Context
