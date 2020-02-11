@@ -29,7 +29,6 @@ Checks whether a package is in the manifest of a given context, e.g. is either d
 function isinmanifest end
 
 @static if VERSION < v"1.1"
-    # is_stdlib(a,b) = false
     isinmanifest(context::Pkg.Types.Context, module_name::String) = module_name in keys(manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = any(get(p[1], "uuid", "") == string(uuid) for (u, p) in manifest(context))
     isinmanifest(manifest::Dict{String,Any}, uuid::AbstractString) = any(get(p[1], "uuid", "") == uuid for (u, p) in manifest)
@@ -111,7 +110,6 @@ function isinmanifest end
     end
     is_package_deved(manifest, uuid) = get(first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)]), "path", "") != ""
 else
-    # const is_stdlib(a,b) = Pkg.Types.is_stdlib(a,b)
     isinmanifest(context::Pkg.Types.Context, module_name::String) = any(p.name == module_name for (u, p) in manifest(context))
     isinmanifest(context::Pkg.Types.Context, uuid::UUID) = haskey(manifest(context), uuid)
     isinmanifest(manifest::Dict{UUID, PackageEntry}, uuid::UUID) = haskey(manifest, uuid)

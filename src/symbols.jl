@@ -1,11 +1,5 @@
 using LibGit2
 
-@static if VERSION < v"1.2"
-    is_stdlib(ctx::Pkg.Types.Context, uuid::UUID) = uuid in keys(ctx.stdlibs)
-else
-    const is_stdlib = Pkg.Types.is_stdlib
-end
-
 mutable struct Server
     storedir::String
     context::Pkg.Types.Context
@@ -23,6 +17,7 @@ end
 TypeRef(t::TypeVar) = TypeRef("Any", PackageRef(("Core",)))
 TypeRef(t::Union) = TypeRef("Any", PackageRef(("Core",)))
 TypeRef(t::Type{T}) where T = TypeRef("Any", PackageRef(("Core",)))
+TypeRef(t::UnionAll) = TypeRef(Base.unwrap_unionall(t))
 function TypeRef(t::DataType)
     pm = String.(split(string(Base.parentmodule(t)), "."))
     pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm))))
@@ -208,8 +203,8 @@ function get_module(m::Module, pkg_deps = Set{String}())
     for n in allnames
         !isdefined(m, n) && continue
         startswith(string(n), "#") && continue
-        if Base.isdeprecated(m, n)
-        else
+        Base.isdeprecated(m, n) && continue
+        try
             x = getfield(m, n)
             t, p = collect_params(x)
             if x isa Function
@@ -238,6 +233,8 @@ function get_module(m::Module, pkg_deps = Set{String}())
             else
                 out.vals[String(n)] = genericStore(string(typeof(x)), [], _getdoc(x))
             end
+        catch err
+            out.vals[String(n)] = genericStore("Any", [], "Variable could not be cached.")
         end
     end
 
