@@ -20,7 +20,7 @@ mutable struct SymbolServerInstance
 end
 
 function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
-    !ispath(environment_path) && error("Must specify an environment path.")
+    !ispath(environment_path) && return :success, deepcopy(stdlibs)
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
     server_script = joinpath(@__DIR__, "server.jl")
