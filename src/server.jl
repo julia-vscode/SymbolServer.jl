@@ -19,7 +19,7 @@ end
 module LoadingBay
 end
 
-using Serialization, Pkg, SHA
+using Serialization, Pkg, SHA, InteractiveUtils
 using Base: UUID
 
 include("symbols.jl")

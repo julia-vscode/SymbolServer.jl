@@ -2,7 +2,7 @@ module SymbolServer
 
 export SymbolServerInstance, getstore
 
-using Serialization, Pkg, SHA
+using Serialization, Pkg, SHA, InteractiveUtils
 using Base: UUID, Process
 
 include("symbols.jl")

@@ -3,6 +3,7 @@ uuid = "cf896787-08d5-524d-9de7-132aaa0cb996"
 version = "3.0.1-DEV"
 
 [deps]
+InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 LibGit2 = "76f85450-5226-5b5a-8eaa-529ad045b433"
 Markdown = "d6f4376e-aef5-505a-96c1-9c027394607a"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
