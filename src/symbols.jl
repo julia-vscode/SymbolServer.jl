@@ -8,19 +8,24 @@ end
 
 struct PackageRef{N}
     name::NTuple{N,String}
+    exported::Bool
 end
 
 struct TypeRef{N}
     name::String
     mod::PackageRef{N}
 end
-TypeRef(t::TypeVar) = TypeRef("Any", PackageRef(("Core",)))
-TypeRef(t::Union) = TypeRef("Any", PackageRef(("Core",)))
-TypeRef(t::Type{T}) where T = TypeRef("Any", PackageRef(("Core",)))
+TypeRef(t::TypeVar) = TypeRef("Any", PackageRef(("Core",), false))
+TypeRef(t::Union) = TypeRef("Any", PackageRef(("Core",), false))
+TypeRef(t::Type{T}) where T = TypeRef("Any", PackageRef(("Core",), false))
 TypeRef(t::UnionAll) = TypeRef(Base.unwrap_unionall(t))
 function TypeRef(t::DataType)
     pm = String.(split(string(Base.parentmodule(t)), "."))
-    pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm))))
+    pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm)), false))
+end
+function TypeRef(t::Function)
+    pm = String.(split(string(Base.parentmodule(t)), "."))
+    pr = TypeRef(String(nameof(t)), PackageRef(ntuple(i->pm[i], length(pm)), false))
 end
 Base.string(tr::TypeRef{T}) where T = string("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
 
@@ -28,10 +33,10 @@ abstract type SymStore end
 mutable struct ModuleStore <: SymStore
     name::String
     vals::Dict{String,Any}
-    exported::Set{String}
     doc::String
+    exported::Bool
 end
-ModuleStore(name::String) = ModuleStore(name, Dict{String,Any}(), Set{String}(), "")
+ModuleStore(name::String) = ModuleStore(name, Dict{String,Any}(), "", true)
 
 struct Package
     name::String
@@ -51,7 +56,8 @@ end
 struct FunctionStore <: SymStore
     methods::Vector{MethodStore}
     doc::String
-    extends::Union{Nothing,PackageRef}
+    extends::TypeRef
+    exported::Bool
 end
 
 struct DataTypeStore <: SymStore
@@ -60,12 +66,15 @@ struct DataTypeStore <: SymStore
     ts::Vector{TypeRef}
     methods::Vector{MethodStore}
     doc::String
+    extends::TypeRef
+    exported::Bool
 end
 
 struct genericStore <: SymStore
     t::String
     params::Vector{String}
     doc::String
+    exported::Bool
 end
 
 function _getdoc(x)
@@ -107,48 +116,51 @@ function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
     end
 end
 
+function cache_method(m::Method, methodlist)
+    path = isabspath(String(m.file)) ? String(m.file) : Base.find_source_file(String(m.file))
+    if path === nothing
+        path = ""
+    end
+    args = Base.invokelatest(BaseShow._arg_decl_parts, m)[2][2:end]
+    if isdefined(methodlist.mt, :kwsorter)
+        kws = kwarg_decl(m, typeof(methodlist.mt.kwsorter))
+        for kw in kws
+            push!(args, (string(kw), ".KW"))
+        end
+    end
+    for i = 1:length(args)
+        if isempty(args[i][2])
+            args[i] = (args[i][1], "Any")
+        end
+    end
+    return MethodStore(path, m.line, args)
+end
+
 function read_methods(x, M)
     if x isa Core.IntrinsicFunction
         return MethodStore[MethodStore("intrinsic-function", 0, [("args...", "Any")])]
     end
-    ms = methods(x)
-    ms1 = MethodStore[]
-    for m in ms
-        # !_parentmodules_comp(m.module, M) && parentmodule(x) != m && continue
-        path = isabspath(String(m.file)) ? String(m.file) : Base.find_source_file(String(m.file))
-        if path === nothing
-            path = ""
-        end
-        args = Base.invokelatest(BaseShow._arg_decl_parts, m)[2][2:end]
-        if isdefined(ms.mt, :kwsorter)
-            kws = kwarg_decl(m, typeof(ms.mt.kwsorter))
-            for kw in kws
-                push!(args, (string(kw), ".KW"))
-            end
-        end
-        for i = 1:length(args)
-            if isempty(args[i][2])
-                args[i] = (args[i][1], "Any")
-            end
-        end
-        push!(ms1, MethodStore(path,
-                    m.line,
-                    args))
+    methodlist = methods(x)
+    out = MethodStore[]
+    for m in methodlist
+        !_parentmodules_comp(m.module, M) && parentmodule(x) != M && continue
+        push!(out, cache_method(m, methodlist))
     end
-    for i in 1:length(ms1)
-        for j = i + 1:length(ms1)
-            if ms1[i].file == ms1[j].file && ms1[i].line == ms1[j].line
-                if length(ms1[i].args) < length(ms1[j].args) &&
-                    ms1[i].args == ms1[j].args[1:length(ms1[i].args)]
-                    kws = filter(a->last(a) == ".KW", ms1[j].args)
+    # fix something to do with kws
+    for i in 1:length(out)
+        for j = i + 1:length(out)
+            if out[i].file == out[j].file && out[i].line == out[j].line
+                if length(out[i].args) < length(out[j].args) &&
+                    out[i].args == out[j].args[1:length(out[i].args)]
+                    kws = filter(a->last(a) == ".KW", out[j].args)
                     if !isempty(kws)
-                        append!(ms1[i].args, ms1[j].args[end - length(kws) + 1:end])
+                        append!(out[i].args, out[j].args[end - length(kws) + 1:end])
                     end
                 end
             end
         end
     end
-    ms1
+    out
 end
 
 function collect_params(t, params = [])
@@ -167,18 +179,21 @@ function load_core()
     depot["Base"] = get_module(Base)
 
     # Add special cases
-    push!(depot["Base"].exported, "include")
+    
+    let f = depot["Base"].vals["include"]
+        depot["Base"].vals["include"] = FunctionStore(f.methods, f.doc, f.extends, true)
+    end
     append!(depot["Base"].vals["include"].methods, read_methods(Base.MainInclude.include, Base.MainInclude))
     depot["Base"].vals["@."] = depot["Base"].vals["@__dot__"]
-    push!(depot["Base"].exported, "@.")
-    depot["Core"].vals["Main"] = genericStore("Module", [], _getdoc(Main))
+    depot["Core"].vals["Main"] = genericStore("Module", [], _getdoc(Main), true)
     # Add built-ins
     builtins = (split("=== typeof sizeof <: isa typeassert throw tuple getfield setfield! fieldtype nfields isdefined arrayref arrayset arraysize applicable invoke apply_type _apply _expr svec"))
+    cnames = names(Core)
     for f in builtins
         if haskey(depot["Core"].vals, f)
             push!(depot["Core"].vals[f].methods, MethodStore("built-in", 0, [("args...", "Any")]))
         else
-            depot["Core"].vals[f] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("args...", "Any")])], _getdoc(getfield(Core, Symbol(f))), nothing)
+            depot["Core"].vals[f] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("args...", "Any")])], _getdoc(getfield(Core, Symbol(f))), TypeRef(f, PackageRef(("Core", ), false)), Symbol(f) in cnames)
         end
     end
     haskey(depot["Core"].vals, "_typevar") && push!(depot["Core"].vals["_typevar"].methods, MethodStore("built-in", 0, [("n", "Symbol"), ("lb", "Any"), ("ub", "Any")]))
@@ -189,16 +204,15 @@ function load_core()
     push!(depot["Core"].vals["ifelse"].methods, MethodStore("built-in", 0, [("condition", "Bool"), ("x", "Any"), ("y", "Any")]))
     haskey(depot["Core"].vals, "const_arrayref") && push!(depot["Core"].vals["const_arrayref"].methods, MethodStore("built-in", 0, [("args...", "Any")]))
 
-    push!(depot["Core"].exported, "ccall")
-    depot["Core"].vals["ccall"] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("(function_name, library", "Any"), ("returntype", "Any"), ("(argtype1, ...", "Tuple"), ("argvalue1, ...", "Any")])], "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.", nothing)
-    depot["Core"].vals["@__doc__"] = FunctionStore(read_methods(getfield(Core, Symbol("@__doc__")), Core), _getdoc(getfield(Core, Symbol("@__doc__"))), nothing)
+    depot["Core"].vals["ccall"] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("(function_name, library", "Any"), ("returntype", "Any"), ("(argtype1, ...", "Tuple"), ("argvalue1, ...", "Any")])], "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.", TypeRef("ccall", PackageRef(("Core", ), false)), true)
+    depot["Core"].vals["@__doc__"] = FunctionStore(read_methods(getfield(Core, Symbol("@__doc__")), Core), _getdoc(getfield(Core, Symbol("@__doc__"))), TypeRef("@__doc___", PackageRef(("Core", ), false)), true)
     return depot
 end
 
 function get_module(m::Module, pkg_deps = Set{String}())
     out = ModuleStore(string(Base.nameof(m)))
     out.doc = string(BaseShow._doc(m))
-    out.exported = Set{String}(string.(names(m)))
+    exportednames = string.(names(m))
     allnames = names(m, all = true, imported = true)
     for n in allnames
         !isdefined(m, n) && continue
@@ -208,44 +222,48 @@ function get_module(m::Module, pkg_deps = Set{String}())
             x = getfield(m, n)
             t, p = collect_params(x)
             if x isa Function
-                if parentmodule(x) == x 
-                    extends = nothing
-                else
-                    pm = String.(split(string(Base.parentmodule(x)), "."))
-                    extends = PackageRef(ntuple(i-> pm[i], length(pm)))
-                end
-                out.vals[String(n)] = FunctionStore(read_methods(x, m), _getdoc(x), extends)
+                pm = String.(split(string(Base.parentmodule(x)), "."))
+                extends = TypeRef(String(n), PackageRef(ntuple(i-> pm[i], length(pm)), false))
+                out.vals[String(n)] = FunctionStore(read_methods(x, m), _getdoc(x), extends, String(n) in exportednames)
             elseif t isa DataType
+                pm = String.(split(string(Base.parentmodule(x)), "."))
+                extends = TypeRef(String(n), PackageRef(ntuple(i-> pm[i], length(pm)), false))
                 out.vals[String(n)] = DataTypeStore(string.(p),
                                 hasfields(t) ? collect(string.(fieldnames(t))) : String[],
                                 get_fieldtypes(t),
                                 t == Vararg ? [] : read_methods(x, m),
-                                _getdoc(x))
+                                _getdoc(x),
+                                extends,
+                                String(n) in exportednames)
             elseif x isa Module && x != m # include reference to current module
                 n == :Main && continue
                 if parentmodule(x) == m # load non-imported submodules
                     out.vals[String(n)] = get_module(x, pkg_deps)
-
-                else
+                else # add in a reference to another package (TODO: need to use UUID here?)
                     pm = String.(split(string(Base.parentmodule(x)), "."))
-                    out.vals[String(n)] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
+                    out.vals[String(n)] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1), String(n) in exportednames)
                 end
             else
-                out.vals[String(n)] = genericStore(string(typeof(x)), [], _getdoc(x))
+                out.vals[String(n)] = genericStore(string(typeof(Base.unwrap_unionall(x).name.name)), [], _getdoc(x), String(n) in exportednames)
             end
         catch err
-            out.vals[String(n)] = genericStore("Any", [], "Variable could not be cached.")
+            out.vals[String(n)] = genericStore("Any", [], "Variable could not be cached.", String(n) in exportednames)
         end
     end
+    
+    # Check for extended methods that aren't included in names(m,...)
+    get_extended_methods(m, allnames, out)
 
+
+    # try to add dependencies that may have been missed (i.e. unfindable in names(M,...))
     for d in pkg_deps
         if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d))
             x = getfield(m, Symbol(d))
             pm = String.(split(string(Base.parentmodule(x)), "."))
             if Base.parentmodule(x) == x
-                out.vals[d] = PackageRef(ntuple(i->pm[i], length(pm)))
+                out.vals[d] = PackageRef(ntuple(i->pm[i], length(pm)), d in exportednames)
             else
-                out.vals[d] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1))
+                out.vals[d] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1), d in exportednames)
             end
         end
     end
@@ -283,3 +301,75 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
 
     return true
 end
+
+function _functions()
+    sts = Base.IdSet{Any}()
+    visited = Base.IdSet{Module}()
+    for m in Base.loaded_modules_array()
+        InteractiveUtils._subtypes(m, Function, sts, visited)
+    end
+    return collect(sts)
+end
+
+function get_extended_methods(M::Module, allnames, out)
+    for f in _functions()
+        !hasproperty(f, :instance) && continue
+        !isdefined(f, :instance) && continue
+        for m in methods(f.instance)
+            if m.module == M && f.name.module != M && !(nameof(f) in allnames)
+                add_extended(m, out)
+            end
+        end
+    end
+end
+
+function add_extended(meth::Method, out)
+    !hasproperty(meth, :sig) && return
+    !hasproperty(Base.unwrap_unionall(meth.sig), :parameters)
+    ft = first(Base.unwrap_unionall(meth.sig).parameters)
+    !isdefined(ft, :instance) && return
+    f = ft.instance
+    fname = String(nameof(f))
+    haskey(out.vals, fname) && return # Already stored
+    pm = String.(split(string(Base.parentmodule(f)), "."))
+    extends = TypeRef(fname, PackageRef(ntuple(i-> pm[i], length(pm)), false))
+    if haskey(out.vals, fname)
+        push!(out.vals[fname].methods, cache_method(meth, methods(f)))
+    else
+        out.vals[fname] = FunctionStore(MethodStore[cache_method(meth, methods(f))], "", extends, false)
+    end
+end
+
+function find_extended_methods(M::Module)
+    allnames = names(M, all = true, imported = true)
+    out = Set{Any}()
+    for f in _functions()
+        !hasproperty(f, :instance) && continue
+        !isdefined(f, :instance) && continue
+        for m in methods(f.instance)
+            if m.module == M && f.name.module != M && !(nameof(f) in allnames)
+                push!(out, m)
+            end
+        end
+    end
+    out
+end
+
+function collect_extended_methods(depot::Dict, extendeds = Dict{TypeRef,Vector{PackageRef}}())
+    for m in depot
+        collect_extended_methods(m[2], extendeds, PackageRef((m[1],), false))
+    end
+    extendeds
+end
+
+function collect_extended_methods(mod::ModuleStore, extendeds, mname = PackageRef((), false))
+    for (n,v) in mod.vals
+        if (v isa FunctionStore || v isa DataTypeStore) && v.extends !== nothing
+            haskey(extendeds, v.extends) ? push!(extendeds[v.extends], mname) : (extendeds[v.extends] = PackageRef[mname])
+        elseif v isa ModuleStore
+            collect_extended_methods(v, extendeds, extend_pkgref(mname, n))
+        end
+    end
+end
+
+extend_pkgref(pr::PackageRef{N}, m::String) where N = PackageRef(ntuple(i -> i <= N ? pr.name[i] : m, N + 1), pr.exported)
