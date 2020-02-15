@@ -1,3 +1,7 @@
+```@meta
+CurrentModule = SymbolServer
+```
+
 # SymbolServer
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julia-vscode.github.io/SymbolServer.jl/dev)
@@ -20,7 +24,6 @@ using SymbolServer
 Documentation for working with Julia environments is available [here](https://github.com/JuliaLang/Pkg.jl).
 
 ## API
-
 ```julia
 SymbolServerInstance(path_to_depot, path_to_store)
 ```
