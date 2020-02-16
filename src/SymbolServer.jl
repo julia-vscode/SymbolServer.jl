@@ -33,7 +33,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
         env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
     end
 
-    stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()    
+    stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
 
     if ssi.process!==nothing
         to_cancel_p = ssi.process
@@ -56,7 +56,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
         return :success, new_store
     elseif p in ssi.canceled_processes
         delete!(ssi.canceled_processes, p)
-        
+
         return :canceled, nothing
     else
         return :failure, stderr_for_client_process

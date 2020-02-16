@@ -40,7 +40,7 @@ struct Package
     uuid::Base.UUID
     sha
 end
-Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha) 
+Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha)
 
 struct MethodStore <: SymStore
     file::String
@@ -208,7 +208,7 @@ function get_module(m::Module, pkg_deps = Set{String}())
             x = getfield(m, n)
             t, p = collect_params(x)
             if x isa Function
-                if parentmodule(x) == x 
+                if parentmodule(x) == x
                     extends = nothing
                 else
                     pm = String.(split(string(Base.parentmodule(x)), "."))

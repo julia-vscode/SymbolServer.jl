@@ -48,7 +48,7 @@ for (pk_name, uuid) in toplevel_pkgs
         if is_package_deved(Pkg.Types.Context().env.manifest, uuid)
             cached_version = open(cache_path) do io
                 deserialize(io)
-            end            
+            end
 
             if sha_pkg(frommanifest(Pkg.Types.Context().env.manifest, uuid)) != cached_version.sha
                 @info "Now recaching package $pk_name ($uuid)"
@@ -56,7 +56,7 @@ for (pk_name, uuid) in toplevel_pkgs
             else
                 @info "Package $pk_name ($uuid) is cached."
             end
-        else            
+        else
             @info "Package $pk_name ($uuid) is cached."
         end
     else

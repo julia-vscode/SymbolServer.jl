@@ -32,7 +32,7 @@ using Test
         @test ret_status2 == :success
         @test length(store2) == 6
         @test haskey(store2, "Core")
-        @test haskey(store2, "Base")        
+        @test haskey(store2, "Base")
         @test haskey(store2, "Base64")
         @test haskey(store2, "IteratorInterfaceExtensions")
         @test haskey(store2, "Markdown")
