@@ -4,7 +4,7 @@ CurrentModule = SymbolServer
 
 # SymbolServer
 
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julia-vscode.github.io/SymbolServer.jl/dev)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://www.julia-vscode.org/SymbolServer.jl/dev)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 ![](https://github.com/julia-vscode/SymbolServer.jl/workflows/Run%20CI%20on%20master/badge.svg)
 [![codecov.io](http://codecov.io/github/julia-vscode/SymbolServer.jl/coverage.svg?branch=master)](http://codecov.io/github/julia-vscode/SymbolServer.jl?branch=master)
@@ -19,7 +19,7 @@ Pkg.add("SymbolServer")
 ```julia
 using SymbolServer
 ```
-**Documentation**: [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julia-vscode.github.io/SymbolServer.jl/dev)
+**Documentation**: [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://www.julia-vscode.org/SymbolServer.jl/dev)
 
 Documentation for working with Julia environments is available [here](https://github.com/JuliaLang/Pkg.jl).
 

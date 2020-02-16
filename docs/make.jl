@@ -8,7 +8,7 @@ makedocs(;
     sitename="SymbolServer.jl",
     format=Documenter.HTML(;
         prettyurls = prettyurls = get(ENV, "CI", nothing) == "true",
-        # canonical="https://julia-vscode.github.io/SymbolServer.jl",
+        # canonical="https://www.julia-vscode.org/SymbolServer.jl",
         # assets=String[],
     ),
     pages=[
