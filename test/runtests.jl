@@ -18,7 +18,10 @@ using Test
         ssi = SymbolServerInstance("", store_path)
 
         @async begin
+            @info "Async STARTED"
             ret_status, store = getstore(ssi, path)
+
+            @info "Async FINISHED"
 
             @test ret_status == :canceled
         end
@@ -26,6 +29,8 @@ using Test
         # We sleep for a second here to make sure the async task we started
         # previously gets run first
         sleep(0.1)
+
+        @info "SLEEP OVER"
 
         ret_status2, store2 = getstore(ssi, path)
 
