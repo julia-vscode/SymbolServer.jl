@@ -42,15 +42,23 @@ toplevel_pkgs = deps(project(Pkg.Types.Context()))
 
 # Next make sure the cache is up-to-date for all of these
 for (pk_name, uuid) in toplevel_pkgs
-    cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+    manifest = Pkg.Types.Context().env.manifest
+
+    # We sometimes have UUIDs in the project file that are not in the 
+    # manifest file. That seems like something that shouldn't happen, but
+    # in practice is not under our control. For now, we just skip these
+    # packages
+    haskey(manifest, uuid) || continue
+
+    cache_path = joinpath(server.storedir, get_filename_from_name(manifest, uuid))
 
     if isfile(cache_path)
-        if is_package_deved(Pkg.Types.Context().env.manifest, uuid)
+        if is_package_deved(manifest, uuid)
             cached_version = open(cache_path) do io
                 deserialize(io)
             end            
 
-            if sha_pkg(frommanifest(Pkg.Types.Context().env.manifest, uuid)) != cached_version.sha
+            if sha_pkg(frommanifest(manifest, uuid)) != cached_version.sha
                 @info "Now recaching package $pk_name ($uuid)"
                 cache_package(server.context, uuid, server.depot)
             else
@@ -64,7 +72,7 @@ for (pk_name, uuid) in toplevel_pkgs
         cache_package(server.context, uuid, server.depot)
         # Next write all package info to disc
         for  (uuid, pkg) in server.depot
-            cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+            cache_path = joinpath(server.storedir, get_filename_from_name(manifest, uuid))
             cache_path in written_caches && continue
             push!(written_caches, cache_path)
             @info "Now writing to disc $uuid"
