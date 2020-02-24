@@ -28,7 +28,7 @@ using Test
         end
 
         # We yield to the other task to make sure it starts
-        yield()
+        sleep(2)
 
         @info "SLEEP OVER"
 
