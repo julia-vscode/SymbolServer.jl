@@ -25,7 +25,7 @@ using Test
 
         # We sleep for a second here to make sure the async task we started
         # previously gets run first
-        sleep(1)
+        sleep(0.1)
 
         ret_status2, store2 = getstore(ssi, path)
 
