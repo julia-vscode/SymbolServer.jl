@@ -6,6 +6,7 @@ using Test
 @testset "SymbolServer" begin
 
     mktempdir() do path
+        @show ispath(path)
         cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
         cp(joinpath(@__DIR__, "testenv", "Manifest.toml"), joinpath(path, "Manifest.toml"))
 
@@ -21,7 +22,7 @@ using Test
             @info "Async STARTED"
             ret_status, store = getstore(ssi, path)
 
-            @info "Async FINISHED"
+            @info "Async FINISHED" ret_status
 
             @test ret_status == :canceled
         end
