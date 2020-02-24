@@ -18,17 +18,19 @@ using Test
 
         ssi = SymbolServerInstance("", store_path)
 
-        @async begin
-            # @info "Async STARTED"
-            ret_status, store = getstore(ssi, path)
+        if VERSION >= v"1.1"
+            @async begin
+                # @info "Async STARTED"
+                ret_status, store = getstore(ssi, path)
 
-            # @info "Async FINISHED" ret_status
+                # @info "Async FINISHED" ret_status
 
-            @test ret_status == :canceled
+                @test ret_status == :canceled
+            end
+
+            # We yield to the other task to make sure it starts
+            sleep(1)
         end
-
-        # We yield to the other task to make sure it starts
-        sleep(2)
         # yield()
 
         # @info "SLEEP OVER"
