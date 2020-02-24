@@ -26,9 +26,8 @@ using Test
             @test ret_status == :canceled
         end
 
-        # We sleep for a second here to make sure the async task we started
-        # previously gets run first
-        sleep(0.1)
+        # We yield to the other task to make sure it starts
+        yield()
 
         @info "SLEEP OVER"
 
