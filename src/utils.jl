@@ -94,7 +94,10 @@ function isinmanifest end
         return nothing
     end
     function get_filename_from_name(manifest, uuid)
-        pkg_info = first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)])
+        temp_var = [p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)]
+        isempty(temp_var) && return nothing
+
+        pkg_info = first(temp_var)
 
         name_for_cash_file = if get(pkg_info, "git-tree-sha1", nothing)!==nothing
             "-normal-" * string(pkg_info["git-tree-sha1"])
@@ -145,6 +148,8 @@ else
     frommanifest(manifest::Dict{UUID, PackageEntry}, uuid) = manifest[uuid]
 
     function get_filename_from_name(manifest, uuid)
+        haskey(manifest, uuid) || return nothing
+
         pkg_info = manifest[uuid]
 
         tree_hash = VERSION >= v"1.3" ? pkg_info.tree_hash : get(pkg_info.other, "git-tree-sha1", nothing)

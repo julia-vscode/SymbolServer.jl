@@ -42,7 +42,16 @@ toplevel_pkgs = deps(project(Pkg.Types.Context()))
 
 # Next make sure the cache is up-to-date for all of these
 for (pk_name, uuid) in toplevel_pkgs
-    cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+
+    file_name = get_filename_from_name(Pkg.Types.Context().env.manifest, uuid)
+
+    # We sometimes have UUIDs in the project file that are not in the 
+    # manifest file. That seems like something that shouldn't happen, but
+    # in practice is not under our control. For now, we just skip these
+    # packages
+    file_name===nothing && continue
+
+    cache_path = joinpath(server.storedir, file_name)
 
     if isfile(cache_path)
         if is_package_deved(Pkg.Types.Context().env.manifest, uuid)
