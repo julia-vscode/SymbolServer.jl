@@ -73,7 +73,9 @@ for (pk_name, uuid) in toplevel_pkgs
         cache_package(server.context, uuid, server.depot)
         # Next write all package info to disc
         for  (uuid, pkg) in server.depot
-            cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+            filename = get_filename_from_name(Pkg.Types.Context().env.manifest, uuid)
+            filename===nothing && continue
+            cache_path = joinpath(server.storedir, filename)
             cache_path in written_caches && continue
             push!(written_caches, cache_path)
             @info "Now writing to disc $uuid"

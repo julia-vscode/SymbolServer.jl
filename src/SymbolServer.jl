@@ -81,7 +81,11 @@ end
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
-    cache_path = joinpath(ssi.store_path, get_filename_from_name(manifest, uuid))
+    filename = get_filename_from_name(manifest, uuid)
+
+    filename===nothing && return
+
+    cache_path = joinpath(ssi.store_path, filename)
 
     if !isinmanifest(manifest, uuid)
         @warn "Tried to load $uuid but failed to find it in the manifest."
