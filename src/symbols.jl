@@ -239,7 +239,7 @@ function get_module(m::Module, pkg_deps = Set{String}())
     end
 
     for d in pkg_deps
-        if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d))
+        if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d)) && getfield(m, Symbol(d)) isa Module
             x = getfield(m, Symbol(d))
             pm = String.(split(string(Base.parentmodule(x)), "."))
             if Base.parentmodule(x) == x
