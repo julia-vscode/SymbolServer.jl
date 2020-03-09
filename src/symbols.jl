@@ -255,7 +255,7 @@ end
 
 function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
     uuid in keys(depot) && return
-    isinmanifest(c, uuid) || return
+    isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
     
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
