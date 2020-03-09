@@ -27,7 +27,9 @@ include("utils.jl")
 
 store_path = length(ARGS)==1 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
-server = Server(store_path, Pkg.Types.Context(), Dict{Any,Any}())
+ctx = Pkg.Types.Context()
+
+server = Server(store_path, ctx, Dict{Any,Any}())
 
 function write_cache(name, pkg)
     open(joinpath(server.storedir, name), "w") do io
@@ -38,12 +40,12 @@ end
 written_caches = String[]
 
 # First get a list of all package UUIds that we want to cache
-toplevel_pkgs = deps(project(Pkg.Types.Context()))
+toplevel_pkgs = deps(project(ctx))
 
 # Next make sure the cache is up-to-date for all of these
 for (pk_name, uuid) in toplevel_pkgs
 
-    file_name = get_filename_from_name(Pkg.Types.Context().env.manifest, uuid)
+    file_name = get_filename_from_name(ctx.env.manifest, uuid)
 
     # We sometimes have UUIDs in the project file that are not in the 
     # manifest file. That seems like something that shouldn't happen, but
@@ -54,12 +56,12 @@ for (pk_name, uuid) in toplevel_pkgs
     cache_path = joinpath(server.storedir, file_name)
 
     if isfile(cache_path)
-        if is_package_deved(Pkg.Types.Context().env.manifest, uuid)
+        if is_package_deved(ctx.env.manifest, uuid)
             cached_version = open(cache_path) do io
                 deserialize(io)
             end            
 
-            if sha_pkg(frommanifest(Pkg.Types.Context().env.manifest, uuid)) != cached_version.sha
+            if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
                 @info "Now recaching package $pk_name ($uuid)"
                 cache_package(server.context, uuid, server.depot)
             else
@@ -73,7 +75,7 @@ for (pk_name, uuid) in toplevel_pkgs
         cache_package(server.context, uuid, server.depot)
         # Next write all package info to disc
         for  (uuid, pkg) in server.depot
-            filename = get_filename_from_name(Pkg.Types.Context().env.manifest, uuid)
+            filename = get_filename_from_name(ctx.env.manifest, uuid)
             filename===nothing && continue
             cache_path = joinpath(server.storedir, filename)
             cache_path in written_caches && continue
