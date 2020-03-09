@@ -254,8 +254,9 @@ function get_module(m::Module, pkg_deps = Set{String}())
 end
 
 function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
-    uuid in keys(depot) && return true
-
+    uuid in keys(depot) && return
+    isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
+    
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
     pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
@@ -269,7 +270,7 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
             m = getfield(LoadingBay, Symbol(pe_name))
         catch e
             depot[uuid] = Package(pe_name, ModuleStore(pe_name), version(pe), uuid, sha_pkg(pe))
-            return false
+            return
         end
     end
     depot[uuid] = Package(pe_name, get_module(m, Set(keys(deps(pe)))), version(pe), uuid, sha_pkg(pe))
@@ -281,5 +282,5 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
         cache_package(c, packageuuid(pkg), depot)
     end
 
-    return true
+    return
 end
