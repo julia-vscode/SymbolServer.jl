@@ -27,7 +27,13 @@ include("utils.jl")
 
 store_path = length(ARGS)==1 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
-ctx = Pkg.Types.Context()
+ctx = try
+    Pkg.Types.Context()
+catch err
+    isa(err, Base.LoadError) || rethrow()
+    @info "Package environment can't be read."
+    exit()
+end
 
 server = Server(store_path, ctx, Dict{Any,Any}())
 
