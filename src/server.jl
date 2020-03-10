@@ -1,5 +1,11 @@
 module SymbolServer
 
+import Sockets
+
+pipename = length(ARGS) > 1 ? ARGS[2] : nothing
+
+conn = pipename!==nothing ? Sockets.connect(pipename) : nothing
+
 start_time = time_ns()
 
 # Try to lower the priority of this process so that it doesn't block the
@@ -25,7 +31,7 @@ using Base: UUID
 include("symbols.jl")
 include("utils.jl")
 
-store_path = length(ARGS)==1 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
+store_path = length(ARGS)>0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
 ctx = try
     Pkg.Types.Context()
@@ -69,7 +75,7 @@ for (pk_name, uuid) in toplevel_pkgs
 
             if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
                 @info "Now recaching package $pk_name ($uuid)"
-                cache_package(server.context, uuid, server.depot)
+                cache_package(server.context, uuid, server.depot, conn)
             else
                 @info "Package $pk_name ($uuid) is cached."
             end
@@ -78,7 +84,7 @@ for (pk_name, uuid) in toplevel_pkgs
         end
     else
         @info "Now caching package $pk_name ($uuid)"
-        cache_package(server.context, uuid, server.depot)
+        cache_package(server.context, uuid, server.depot, conn)
         # Next write all package info to disc
         for  (uuid, pkg) in server.depot
             filename = get_filename_from_name(ctx.env.manifest, uuid)
