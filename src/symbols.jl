@@ -253,7 +253,7 @@ function get_module(m::Module, pkg_deps = Set{String}())
     out
 end
 
-function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
+function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
     uuid in keys(depot) && return
     isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
     
@@ -262,11 +262,14 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
     pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
 
     if pid in keys(Base.loaded_modules)
+        conn!==nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")        
         LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(LoadingBay, Symbol(pe_name))
     else
         m = try
+            conn!==nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
             LoadingBay.eval(:(import $(Symbol(pe_name))))
+            conn!==nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(LoadingBay, Symbol(pe_name))
         catch e
             depot[uuid] = Package(pe_name, ModuleStore(pe_name), version(pe), uuid, sha_pkg(pe))
@@ -279,7 +282,7 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
 
     # Dependencies
     for pkg in deps(pe)
-        cache_package(c, packageuuid(pkg), depot)
+        cache_package(c, packageuuid(pkg), depot, conn)
     end
 
     return
