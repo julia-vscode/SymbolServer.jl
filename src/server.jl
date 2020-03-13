@@ -36,7 +36,6 @@ store_path = length(ARGS)>0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"
 ctx = try
     Pkg.Types.Context()
 catch err
-    isa(err, Base.LoadError) || rethrow()
     @info "Package environment can't be read."
     exit()
 end
