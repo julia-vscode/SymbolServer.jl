@@ -48,7 +48,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     currently_loading_a_package = false
     current_package_name = ""
 
-    pipename = "\\\\.\\pipe\\vscodesymserv-$(UUIDs.uuid4())"
+    pipename = Sys.iswindows() ? "\\\\.\\pipe\\vscjlsymserv-$(UUIDs.uuid4())" : joinpath(tempdir(), "vscjlsymserv-$(UUIDs.uuid4())")
 
     server_is_ready = Channel(1)
 
