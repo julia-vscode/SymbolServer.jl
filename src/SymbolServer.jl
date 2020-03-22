@@ -4,6 +4,7 @@ export SymbolServerInstance, getstore
 
 using Serialization, Pkg, SHA, InteractiveUtils
 using Base: UUID, Process
+import Sockets, UUIDs
 
 include("symbols.jl")
 include("utils.jl")
@@ -19,7 +20,7 @@ mutable struct SymbolServerInstance
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing)
     !ispath(environment_path) && return :success, deepcopy(stdlibs)
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -44,7 +45,51 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
 
     use_code_coverage = Base.JLOptions().code_coverage
 
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path)`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    currently_loading_a_package = false
+    current_package_name = ""
+
+    pipename = Sys.iswindows() ? "\\\\.\\pipe\\vscjlsymserv-$(UUIDs.uuid4())" : joinpath(tempdir(), "vscjlsymserv-$(UUIDs.uuid4())")
+
+    server_is_ready = Channel(1)
+
+    @async try
+        server = Sockets.listen(pipename)
+
+        put!(server_is_ready, nothing)
+
+        conn = Sockets.accept(server)
+
+        s = readline(conn)
+
+        while s!="" && isopen(conn)
+            parts = split(s, ';')
+            if parts[1]=="STARTLOAD"
+                currently_loading_a_package = true
+                current_package_name = parts[2]
+                current_package_uuid = parts[3]
+                current_package_version = parts[4]
+                progress_callback!==nothing && progress_callback(current_package_name)
+            elseif parts[1]=="STOPLOAD"
+                currently_loading_a_package = false
+            elseif parts[1]=="PROCESSPKG"
+                progress_callback!==nothing && progress_callback(parts[2])
+            else
+                error("Unknown command.")
+            end
+            s = readline(conn)
+        end
+    catch err
+        bt = catch_backtrace()
+        if error_handler!==nothing
+            error_handler(err, bt)
+        else
+            Base.display_error(stderr, err, bt)
+        end        
+    end
+
+    take!(server_is_ready)
+
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
     ssi.process = p
 
     if success(p)
@@ -59,7 +104,11 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
         
         return :canceled, nothing
     else
-        return :failure, stderr_for_client_process
+        if currently_loading_a_package
+            return :package_load_crash, (package_name = current_package_name, stderr=stderr_for_client_process)
+        else
+            return :failure, stderr_for_client_process
+        end
     end
 end
 
@@ -81,7 +130,11 @@ end
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
-    cache_path = joinpath(ssi.store_path, get_filename_from_name(manifest, uuid))
+    filename = get_filename_from_name(manifest, uuid)
+
+    filename===nothing && return
+
+    cache_path = joinpath(ssi.store_path, filename)
 
     if !isinmanifest(manifest, uuid)
         @warn "Tried to load $uuid but failed to find it in the manifest."

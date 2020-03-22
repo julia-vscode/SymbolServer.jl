@@ -257,7 +257,7 @@ function get_module(m::Module, pkg_deps = Set{String}())
 
     # try to add dependencies that may have been missed (i.e. unfindable in names(M,...))
     for d in pkg_deps
-        if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d))
+        if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d)) && getfield(m, Symbol(d)) isa Module
             x = getfield(m, Symbol(d))
             pm = String.(split(string(Base.parentmodule(x)), "."))
             if Base.parentmodule(x) == x
@@ -271,23 +271,27 @@ function get_module(m::Module, pkg_deps = Set{String}())
     out
 end
 
-function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
-    uuid in keys(depot) && return true
-
+function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
+    uuid in keys(depot) && return
+    isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
+    
     pe = frommanifest(c, uuid)
     pe_name = packagename(c, uuid)
     pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
 
     if pid in keys(Base.loaded_modules)
+        conn!==nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")        
         LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(LoadingBay, Symbol(pe_name))
     else
         m = try
+            conn!==nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
             LoadingBay.eval(:(import $(Symbol(pe_name))))
+            conn!==nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(LoadingBay, Symbol(pe_name))
         catch e
             depot[uuid] = Package(pe_name, ModuleStore(pe_name), version(pe), uuid, sha_pkg(pe))
-            return false
+            return
         end
     end
     depot[uuid] = Package(pe_name, get_module(m, Set(keys(deps(pe)))), version(pe), uuid, sha_pkg(pe))
@@ -296,10 +300,10 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict)
 
     # Dependencies
     for pkg in deps(pe)
-        cache_package(c, packageuuid(pkg), depot)
+        cache_package(c, packageuuid(pkg), depot, conn)
     end
 
-    return true
+    return
 end
 
 function _functions()

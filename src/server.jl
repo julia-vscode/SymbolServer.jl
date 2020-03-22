@@ -1,5 +1,11 @@
 module SymbolServer
 
+import Sockets
+
+pipename = length(ARGS) > 1 ? ARGS[2] : nothing
+
+conn = pipename!==nothing ? Sockets.connect(pipename) : nothing
+
 start_time = time_ns()
 
 # Try to lower the priority of this process so that it doesn't block the
@@ -25,9 +31,16 @@ using Base: UUID
 include("symbols.jl")
 include("utils.jl")
 
-store_path = length(ARGS)==1 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
+store_path = length(ARGS)>0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
-server = Server(store_path, Pkg.Types.Context(), Dict{Any,Any}())
+ctx = try
+    Pkg.Types.Context()
+catch err
+    @info "Package environment can't be read."
+    exit()
+end
+
+server = Server(store_path, ctx, Dict{Any,Any}())
 
 function write_cache(name, pkg)
     open(joinpath(server.storedir, name), "w") do io
@@ -38,21 +51,30 @@ end
 written_caches = String[]
 
 # First get a list of all package UUIds that we want to cache
-toplevel_pkgs = deps(project(Pkg.Types.Context()))
+toplevel_pkgs = deps(project(ctx))
 
 # Next make sure the cache is up-to-date for all of these
 for (pk_name, uuid) in toplevel_pkgs
-    cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+
+    file_name = get_filename_from_name(ctx.env.manifest, uuid)
+
+    # We sometimes have UUIDs in the project file that are not in the 
+    # manifest file. That seems like something that shouldn't happen, but
+    # in practice is not under our control. For now, we just skip these
+    # packages
+    file_name===nothing && continue
+
+    cache_path = joinpath(server.storedir, file_name)
 
     if isfile(cache_path)
-        if is_package_deved(Pkg.Types.Context().env.manifest, uuid)
+        if is_package_deved(ctx.env.manifest, uuid)
             cached_version = open(cache_path) do io
                 deserialize(io)
             end            
 
-            if sha_pkg(frommanifest(Pkg.Types.Context().env.manifest, uuid)) != cached_version.sha
+            if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
                 @info "Now recaching package $pk_name ($uuid)"
-                cache_package(server.context, uuid, server.depot)
+                cache_package(server.context, uuid, server.depot, conn)
             else
                 @info "Package $pk_name ($uuid) is cached."
             end
@@ -61,10 +83,12 @@ for (pk_name, uuid) in toplevel_pkgs
         end
     else
         @info "Now caching package $pk_name ($uuid)"
-        cache_package(server.context, uuid, server.depot)
+        cache_package(server.context, uuid, server.depot, conn)
         # Next write all package info to disc
         for  (uuid, pkg) in server.depot
-            cache_path = joinpath(server.storedir, get_filename_from_name(Pkg.Types.Context().env.manifest, uuid))
+            filename = get_filename_from_name(ctx.env.manifest, uuid)
+            filename===nothing && continue
+            cache_path = joinpath(server.storedir, filename)
             cache_path in written_caches && continue
             push!(written_caches, cache_path)
             @info "Now writing to disc $uuid"
