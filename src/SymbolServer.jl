@@ -151,7 +151,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
             package_data = open(cache_path) do io
                 deserialize(io)
             end
-            store[pe_name] = package_data.val
+            store[Symbol(pe_name)] = package_data.val
             for dep in deps(pe)
                 load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store)
             end

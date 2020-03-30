@@ -191,48 +191,69 @@ function sha_pkg(pe::PackageEntry)
     path(pe) isa String && isdir(path(pe)) && isdir(joinpath(path(pe), "src")) ? sha2_256_dir(joinpath(path(pe), "src")) : nothing
 end
 
-function hasfields(@nospecialize t)
-    if t isa UnionAll || t isa Union
-        t = Base.argument_datatype(t)
-        if t === nothing
-            return false
-        end
-        t = t::DataType
-    elseif t == Union{}
-        return false
+function _doc(object)
+    binding = Base.Docs.aliasof(object, typeof(object))
+    !(binding isa Base.Docs.Binding) && return ""
+    sig = Union{}
+    if Base.Docs.defined(binding)
+        result = Base.Docs.getdoc(Base.Docs.resolve(binding), sig)
+        result === nothing || return result
     end
-    if !(t isa DataType)
-        return false
+    results, groups = Base.Docs.DocStr[], Base.Docs.MultiDoc[]
+    # Lookup `binding` and `sig` for matches in all modules of the docsystem.
+    for mod in Base.Docs.modules
+        dict = Base.Docs.meta(mod)
+        if haskey(dict, binding)
+            multidoc = dict[binding]
+            push!(groups, multidoc)
+            for msig in multidoc.order
+                sig <: msig && push!(results, multidoc.docs[msig])
+            end
+        end
     end
-    if t.name === Base.NamedTuple_typename
-        names, types = t.parameters
-        if names isa Tuple
-            return true
+    if isempty(groups)
+        alias = Base.Docs.aliasof(binding)
+        alias == binding ? "" : _doc(alias, sig)
+    elseif isempty(results)
+        for group in groups, each in group.order
+            push!(results, group.docs[each])
         end
-        if types isa DataType && types <: Tuple
-            return fieldcount(types)
+    end
+    md = Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
+    return string(results)
+end
+
+function _lookup(vr::VarRef, depot::Dict)
+    if vr.parent === nothing
+        if haskey(depot, vr.name)
+            return depot[vr.name]
+        else
+            return nothing
         end
-        abstr = true
     else
-        abstr = t.abstract || (t.name === Tuple.name && Base.isvatuple(t))
-    end
-    if abstr
-        return false
-    end
-    if isdefined(t, :types)
-        return true
-    end
-    return true
-end
-
-@static if isdefined(Base, :datatype_fieldtypes)
-    function get_fieldtypes(t::DataType)
-        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]
-    end
-else
-    function get_fieldtypes(t::DataType)
-        isdefined(t, :types) ? TypeRef.(collect(t.types)) : TypeRef[]
+        par = _lookup(vr.parent, depot)
+        if par !== nothing && par isa ModuleStore && haskey(par, vr.name)
+            return par[vr.name]
+        else
+            return nothing
+        end
     end
 end
 
-include("baseshow.jl")
+# function _lookup(tr::PackageRef{N}, depot::Dict{String,ModuleStore}) where N
+#     if haskey(depot, tr.name[1])
+#         if N == 1
+#             return depot[tr.name[1]]
+#         else
+#             return _lookup(tr, depot[tr.name[1]], 2)
+#         end
+#     end
+# end
+
+# function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
+#     if i < N && haskey(m.vals, tr.name[i])
+#         _lookup(tr, m.vals[tr.name[i]], i + 1)
+#     elseif i == N && haskey(m.vals, tr.name[i])
+#         return m.vals[tr.name[i]]
+#     end
+# end

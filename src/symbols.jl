@@ -6,37 +6,74 @@ mutable struct Server
     depot::Dict
 end
 
-struct PackageRef{N}
-    name::NTuple{N,String}
-    exported::Bool
+########## Fake type-system
+# Used to label all objects
+struct VarRef
+    parent::Union{VarRef,Nothing}
+    name::Symbol
+end
+VarRef(m::Module) = VarRef((parentmodule(m) == Main || parentmodule(m) == m) ? nothing : VarRef(parentmodule(m)), nameof(m))
+
+# struct FakeModuleName
+#     parent::Union{FakeModuleName,Nothing}
+#     name::Symbol
+# end
+# FakeModuleName(m::Module) = FakeModuleName((parentmodule(m) == m || parentmodule(m) == Main) ? nothing : FakeModuleName(parentmodule(m)), nameof(m))
+
+struct FakeTypeName
+    name::Symbol
+    parameters::Vector{Any}
+    modul::VarRef
 end
 
-struct TypeRef{N}
-    name::String
-    mod::PackageRef{N}
+function FakeTypeName(x)
+    if x isa DataType
+        FakeTypeName(x.name.name, _parameter.(x.parameters), VarRef(x.name.module))
+    elseif x isa Union
+        FakeUnion(x)
+    elseif x isa UnionAll
+        FakeUnionAll(x)
+    elseif x isa TypeVar
+        FakeTypeVar(x)
+    elseif x isa Core.TypeofBottom
+        FakeTypeofBottom()
+    else
+        @info x, typeof(x)
+        error()
+    end
 end
-TypeRef(t::TypeVar) = TypeRef("Any", PackageRef(("Core",), false))
-TypeRef(t::Union) = TypeRef("Any", PackageRef(("Core",), false))
-TypeRef(t::Type{T}) where T = TypeRef("Any", PackageRef(("Core",), false))
-TypeRef(t::UnionAll) = TypeRef(Base.unwrap_unionall(t))
-function TypeRef(t::DataType)
-    pm = String.(split(string(Base.parentmodule(t)), "."))
-    pr = TypeRef(String(t.name.name), PackageRef(ntuple(i->pm[i], length(pm)), false))
+
+struct FakeTypeofBottom end
+struct FakeUnion
+    a
+    b
+    FakeUnion(u::Union) = new(FakeTypeName(u.a), FakeTypeName(u.b))
 end
-function TypeRef(t::Function)
-    pm = String.(split(string(Base.parentmodule(t)), "."))
-    pr = TypeRef(String(nameof(t)), PackageRef(ntuple(i->pm[i], length(pm)), false))
+struct FakeTypeVar
+    name::Symbol
+    lb
+    ub
+    FakeTypeVar(tv::TypeVar) = new(tv.name, FakeTypeName(tv.lb), FakeTypeName(tv.ub))
 end
-Base.string(tr::TypeRef{T}) where T = string("TypeRef: ", join(tr.mod.name, "."), ".", tr.name)
+struct FakeUnionAll
+    var::FakeTypeVar
+    body::Any
+    FakeUnionAll(ua::UnionAll) = new(FakeTypeVar(ua.var), FakeTypeName(ua.body))
+end
+
 
 abstract type SymStore end
-mutable struct ModuleStore <: SymStore
-    name::String
-    vals::Dict{String,Any}
+struct ModuleStore <: SymStore
+    name::VarRef
+    vals::Dict{Symbol,Any}
     doc::String
     exported::Bool
 end
-ModuleStore(name::String) = ModuleStore(name, Dict{String,Any}(), "", true)
+Base.getindex(m::ModuleStore, k) = m.vals[k]
+Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
+Base.haskey(m::ModuleStore, k) = haskey(m.vals, k)
+
+const EnvStore = Dict{Symbol,ModuleStore}
 
 struct Package
     name::String
@@ -47,228 +84,212 @@ struct Package
 end
 Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha) 
 
-struct MethodStore <: SymStore
+struct MethStore
+    name::Symbol
+    mod::Symbol
     file::String
-    line::Int
-    args::Vector{Tuple{String,String}}
-end
-
-struct FunctionStore <: SymStore
-    methods::Vector{MethodStore}
-    doc::String
-    extends::TypeRef
-    exported::Bool
+    line::Int32
+    sig::Vector{Pair{Any,Any}}
+    rt::Any
 end
 
 struct DataTypeStore <: SymStore
-    params::Vector{String}
-    fields::Vector{String}
-    ts::Vector{TypeRef}
-    methods::Vector{MethodStore}
-    doc::String
-    extends::TypeRef
-    exported::Bool
-end
-
-struct genericStore <: SymStore
-    t::String
-    params::Vector{String}
+    name::FakeTypeName
+    super::FakeTypeName
+    parameters::Vector{Any}
+    types::Vector{Any}
+    fieldnames::Vector{Symbol}
+    methods::Vector{MethStore}
     doc::String
     exported::Bool
 end
 
-function _getdoc(x)
-    string(BaseShow._doc((x)))
+function DataTypeStore(t::DataType, parent_mod, exported)
+    parameters = map(t.parameters) do p
+        _parameter(p)
+    end
+    types = map(t.types) do p
+        FakeTypeName(p)
+    end
+    DataTypeStore(FakeTypeName(t), FakeTypeName(t.super), parameters, types, Symbol[], cache_methods(t, parent_mod), _doc(t), exported)
 end
 
-# v1.4 compat for change in kwarg_decl signature
-@static if length(first(methods(Base.kwarg_decl)).sig.parameters) == 2
-    kwarg_decl(m::Method, b) = Base.kwarg_decl(m)
-else
-    kwarg_decl = Base.kwarg_decl
+struct FunctionStore <: SymStore
+    name::VarRef
+    methods::Vector{MethStore}
+    doc::String
+    extends::VarRef
+    exported::Bool
 end
 
-function _parentmodules_comp(m::Module, M)
-    if m == M
-        return true
-    elseif parentmodule(m) != m
-        return _parentmodules_comp(parentmodule(m), M)
+function FunctionStore(f, parent_mod, exported)
+    FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), cache_methods(f, parent_mod), _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+end
+
+struct GenericStore <: SymStore
+    name::VarRef
+    typ::Any
+    doc::String
+    exported::Bool
+end
+
+function _parameter(p::T) where T
+    if p isa Union{Int,Symbol,Bool,Char}
+        p
+    elseif !(p isa Type) && isbitstype(T)
+        0
+    elseif p isa Tuple
+        _parameter.(p)
     else
-        return false
+        FakeTypeName(p)
     end
 end
 
-function _lookup(tr::PackageRef{N}, depot::Dict{String,ModuleStore}) where N
-    if haskey(depot, tr.name[1])
-        if N == 1
-            return depot[tr.name[1]]
-        else
-            return _lookup(tr, depot[tr.name[1]], 2)
+function clean_method_path(m::Method)
+    path = String(m.file)
+    if !isabspath(path) 
+        path = Base.find_source_file(path)
+        if path == nothing
+            path = ""
         end
     end
+    return path
 end
 
-function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
-    if i < N && haskey(m.vals, tr.name[i])
-        _lookup(tr, m.vals[tr.name[i]], i + 1)
-    elseif i == N && haskey(m.vals, tr.name[i])
-        return m.vals[tr.name[i]]
+function cache_methods(f, mod = nothing)
+    if mod isa Module
+        mod = (mod,)
     end
-end
-
-function cache_method(m::Method, methodlist)
-    path = isabspath(String(m.file)) ? String(m.file) : Base.find_source_file(String(m.file))
-    if path === nothing
-        path = ""
+    if isa(f, Core.Builtin)
+        return MethStore[]
     end
-    args = Base.invokelatest(BaseShow._arg_decl_parts, m)[2][2:end]
-    if isdefined(methodlist.mt, :kwsorter)
-        kws = kwarg_decl(m, typeof(methodlist.mt.kwsorter))
-        for kw in kws
-            push!(args, (string(kw), ".KW"))
-        end
-    end
-    for i = 1:length(args)
-        if isempty(args[i][2])
-            args[i] = (args[i][1], "Any")
-        end
-    end
-    return MethodStore(path, m.line, args)
-end
-
-function read_methods(x, M)
-    if x isa Core.IntrinsicFunction
-        return MethodStore[MethodStore("intrinsic-function", 0, [("args...", "Any")])]
-    end
-    methodlist = methods(x)
-    out = MethodStore[]
-    for m in methodlist
-        !_parentmodules_comp(m.module, M) && parentmodule(x) != M && continue
-        push!(out, cache_method(m, methodlist))
-    end
-    # fix something to do with kws
-    for i in 1:length(out)
-        for j = i + 1:length(out)
-            if out[i].file == out[j].file && out[i].line == out[j].line
-                if length(out[i].args) < length(out[j].args) &&
-                    out[i].args == out[j].args[1:length(out[i].args)]
-                    kws = filter(a->last(a) == ".KW", out[j].args)
-                    if !isempty(kws)
-                        append!(out[i].args, out[j].args[end - length(kws) + 1:end])
-                    end
+    types = Tuple
+    world = typemax(UInt)
+    params = Core.Compiler.Params(world)
+    ms = MethStore[]
+    for m in Base._methods(f, types, -1, world)
+        if mod === nothing || m[3].module in mod
+            # meth = Base.func_for_method_checked(m[3], types, m[2])
+            if isdefined(m[3], :generator) && !Base.may_invoke_generator(m[3], types, m[2])
+                ty = Any
+            else
+                try
+                    ty = Core.Compiler.typeinf_type(m[3], m[1], m[2], params)
+                catch e
+                    ty = nothing
                 end
+                ty === nothing && (ty = Any)
             end
+            MS = MethStore(m[3].name, nameof(m[3].module), clean_method_path(m[3]), m[3].line, [], FakeTypeName(ty))
+            # Get signature
+            sig = Base.unwrap_unionall(m[1])
+            argnames = getargnames(m[3])
+            for i = 2:m[3].nargs
+                push!(MS.sig, argnames[i] => FakeTypeName(sig.parameters[i]))
+            end
+            push!(ms, MS)
         end
     end
-    out
+    return ms
 end
 
-function collect_params(t, params = [])
-    if t isa UnionAll
-        push!(params, t.var)
-        return collect_params(t.body, params)
-    else
-        return t, params
+getargnames(m::Method) = Symbol.(split(m.slot_syms, "\0")[1:m.nargs])
+
+function _functions()
+    sts = Base.IdSet{Any}()
+    visited = Base.IdSet{Module}()
+    for m in Base.loaded_modules_array()
+        InteractiveUtils._subtypes(m, Function, sts, visited)
     end
+    return collect(sts)
+end
+
+function get_extended_methods(parent_mod::Module, allnames, store)
+    for f in _functions()
+        !hasproperty(f, :instance) && continue
+        !isdefined(f, :instance) && continue
+        !(f isa DataType) && continue
+        haskey(store, f.name.name) && continue
+        ms = cache_methods(f.instance, parent_mod)
+        if !isempty(ms)
+            store[nameof(f.instance)] = FunctionStore(VarRef(VarRef(f.name.module), nameof(f.instance)), ms, "", VarRef(VarRef(parentmodule(f)), nameof(f)), false)
+        end
+    end
+end
+
+function cache_module(m::Module, mname::VarRef = VarRef(m), pkg_deps = Symbol[])
+    cache = ModuleStore(mname, Dict{Symbol,Any}(), _doc(m), false)
+    allnames = names(m, all = true, imported = true)
+    exportednames = names(m)
+    for name in allnames
+        !isdefined(m, name) && continue
+        x = getfield(m, name)
+        vname = VarRef(mname, name)
+        if x isa Module
+            (x == m || name == :Main) && continue
+            if parentmodule(x) == m
+                cache[name] = cache_module(x, VarRef(mname, name))
+            else
+                cache[name] = VarRef(x)
+            end
+        elseif x isa DataType
+            cache[name] = DataTypeStore(x, m, name in exportednames)
+        elseif x isa Function
+            cache[name] = FunctionStore(x, m, name in exportednames)
+        else
+            cache[name] = GenericStore(VarRef(VarRef(m), name), FakeTypeName(typeof(x)), _doc(x), name in exportednames)
+        end
+    end
+    get_extended_methods(m, allnames, cache)
+
+    for d in pkg_deps
+        if !haskey(cache, d) && isdefined(m, d) && getfield(m, d) isa Module
+            x = getfield(m, d)
+            cache[d] = VarRef(x)
+        end
+    end
+    cache
 end
 
 function load_core()
     c = Pkg.Types.Context()
-    depot = Dict{String,Any}()
-    depot["Core"] = get_module(Core)
-    depot["Base"] = get_module(Base)
+    depot = Dict{Symbol,Any}()
+    depot[:Core] = cache_module(Core, VarRef(nothing, :Core))
+    depot[:Base] = cache_module(Base, VarRef(nothing, :Base))
 
     # Add special cases
-    
-    let f = depot["Base"].vals["include"]
-        depot["Base"].vals["include"] = FunctionStore(f.methods, f.doc, f.extends, true)
+    let f = depot[:Base][:include]
+        depot[:Base][:include] = FunctionStore(f.name, f.methods, f.doc, f.extends, true)
     end
-    append!(depot["Base"].vals["include"].methods, read_methods(Base.MainInclude.include, Base.MainInclude))
-    depot["Base"].vals["@."] = depot["Base"].vals["@__dot__"]
-    depot["Core"].vals["Main"] = genericStore("Module", [], _getdoc(Main), true)
+    append!(depot[:Base][:include].methods, cache_methods(Base.MainInclude.include, Base.MainInclude))
+    depot[:Base][:(var"@.")] = depot[:Base][:(var"@__dot__")]
+    depot[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module),_doc(Main), true)
     # Add built-ins
-    builtins = (split("=== typeof sizeof <: isa typeassert throw tuple getfield setfield! fieldtype nfields isdefined arrayref arrayset arraysize applicable invoke apply_type _apply _expr svec"))
+    builtins = Symbol[nameof(f.instance) for f in subtypes(Core.Builtin) if f isa DataType && isdefined(f, :instance)]
     cnames = names(Core)
     for f in builtins
-        if haskey(depot["Core"].vals, f)
-            push!(depot["Core"].vals[f].methods, MethodStore("built-in", 0, [("args...", "Any")]))
-        else
-            depot["Core"].vals[f] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("args...", "Any")])], _getdoc(getfield(Core, Symbol(f))), TypeRef(f, PackageRef(("Core", ), false)), Symbol(f) in cnames)
+        if !haskey(depot[:Core], f)
+            depot[:Core][f] = FunctionStore(getfield(Core, Symbol(f)), Core, Symbol(f) in cnames)
         end
+        push!(depot[:Core][f].methods, MethStore(Symbol(f), :none, "built-in", 0, [], FakeTypeName(Any)))
     end
-    haskey(depot["Core"].vals, "_typevar") && push!(depot["Core"].vals["_typevar"].methods, MethodStore("built-in", 0, [("n", "Symbol"), ("lb", "Any"), ("ub", "Any")]))
-    push!(depot["Core"].vals["setproperty!"].methods, MethodStore("built-in", 0, [("value", "Any"), ("name", "Symbol"), ("x", "Any")]))
-    push!(depot["Core"].vals["_apply_latest"].methods, MethodStore("built-in", 0, [("f", "Function"), ("args...", "Any")]))
-    push!(depot["Core"].vals["_apply_pure"].methods, MethodStore("built-in", 0, [("f", "Function"), ("args...", "Any")]))
-    push!(depot["Core"].vals["getproperty"].methods, MethodStore("built-in", 0, [("value", "Any"), ("name", "Symbol")]))
-    push!(depot["Core"].vals["ifelse"].methods, MethodStore("built-in", 0, [("condition", "Bool"), ("x", "Any"), ("y", "Any")]))
-    haskey(depot["Core"].vals, "const_arrayref") && push!(depot["Core"].vals["const_arrayref"].methods, MethodStore("built-in", 0, [("args...", "Any")]))
-
-    depot["Core"].vals["ccall"] = FunctionStore(MethodStore[MethodStore("built-in", 0, [("(function_name, library", "Any"), ("returntype", "Any"), ("(argtype1, ...", "Tuple"), ("argvalue1, ...", "Any")])], "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.", TypeRef("ccall", PackageRef(("Core", ), false)), true)
-    depot["Core"].vals["@__doc__"] = FunctionStore(read_methods(getfield(Core, Symbol("@__doc__")), Core), _getdoc(getfield(Core, Symbol("@__doc__"))), TypeRef("@__doc___", PackageRef(("Core", ), false)), true)
-    return depot
-end
-
-function get_module(m::Module, pkg_deps = Set{String}())
-    out = ModuleStore(string(Base.nameof(m)))
-    out.doc = string(BaseShow._doc(m))
-    exportednames = string.(names(m))
-    allnames = names(m, all = true, imported = true)
-    for n in allnames
-        !isdefined(m, n) && continue
-        startswith(string(n), "#") && continue
-        Base.isdeprecated(m, n) && continue
-        try
-            x = getfield(m, n)
-            t, p = collect_params(x)
-            if x isa Function
-                pm = String.(split(string(Base.parentmodule(x)), "."))
-                extends = TypeRef(String(n), PackageRef(ntuple(i-> pm[i], length(pm)), false))
-                out.vals[String(n)] = FunctionStore(read_methods(x, m), _getdoc(x), extends, String(n) in exportednames)
-            elseif t isa DataType
-                pm = String.(split(string(Base.parentmodule(x)), "."))
-                extends = TypeRef(String(n), PackageRef(ntuple(i-> pm[i], length(pm)), false))
-                out.vals[String(n)] = DataTypeStore(string.(p),
-                                hasfields(t) ? collect(string.(fieldnames(t))) : String[],
-                                get_fieldtypes(t),
-                                t == Vararg ? [] : read_methods(x, m),
-                                _getdoc(x),
-                                extends,
-                                String(n) in exportednames)
-            elseif x isa Module && x != m # include reference to current module
-                n == :Main && continue
-                if parentmodule(x) == m # load non-imported submodules
-                    out.vals[String(n)] = get_module(x, pkg_deps)
-                else # add in a reference to another package (TODO: need to use UUID here?)
-                    pm = String.(split(string(Base.parentmodule(x)), "."))
-                    out.vals[String(n)] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1), String(n) in exportednames)
-                end
-            else
-                out.vals[String(n)] = genericStore(string(typeof(Base.unwrap_unionall(x).name.name)), [], _getdoc(x), String(n) in exportednames)
-            end
-        catch err
-            out.vals[String(n)] = genericStore("Any", [], "Variable could not be cached.", String(n) in exportednames)
-        end
-    end
+    haskey(depot[:Core], :_typevar) && push!(depot[:Core][:_typevar].methods, MethStore(:_typevar, :Core, "built-in", 0, [:n=>FakeTypeName(Symbol), :lb=>FakeTypeName(Any), :ub=>FakeTypeName(Any)], FakeTypeName(Any)))
+    push!(depot[:Core][:setproperty!].methods, MethStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)],FakeTypeName(Any)))
+    push!(depot[:Core][:_apply_latest].methods, MethStore(:_apply_latest, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], FakeTypeName(Any)))
+    push!(depot[:Core][:_apply_pure].methods, MethStore(:_apply_pure, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], FakeTypeName(Any)))
+    push!(depot[:Core][:getproperty].methods, MethStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol)], FakeTypeName(Any)))
+    push!(depot[:Core][:ifelse].methods, MethStore(:ifelse, :Core, "built-in", 0, [:condition => FakeTypeName(Bool), :x => FakeTypeName(Any), :y => FakeTypeName(Any)], FakeTypeName(Any)))
+    haskey(depot[:Core], :const_arrayref) && push!(depot[:Core][:const_arrayref].methods, MethStore(:const_arrayref, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], FakeTypeName(Any)))
     
-    # Check for extended methods that aren't included in names(m,...)
-    get_extended_methods(m, allnames, out)
-
-
-    # try to add dependencies that may have been missed (i.e. unfindable in names(M,...))
-    for d in pkg_deps
-        if !haskey(out.vals, Symbol(d)) && isdefined(m, Symbol(d)) && getfield(m, Symbol(d)) isa Module
-            x = getfield(m, Symbol(d))
-            pm = String.(split(string(Base.parentmodule(x)), "."))
-            if Base.parentmodule(x) == x
-                out.vals[d] = PackageRef(ntuple(i->pm[i], length(pm)), d in exportednames)
-            else
-                out.vals[d] = PackageRef(ntuple(i->i <= length(pm) ? pm[i] : string(Base.nameof(x)), length(pm) + 1), d in exportednames)
-            end
-        end
-    end
-
-    out
+    depot[:Core][:ccall] = FunctionStore(VarRef(VarRef(Core), :ccall),
+        MethStore[
+            MethStore(:ccall, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], FakeTypeName(Any)) # General method - should be fixed
+        ],
+        "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.", 
+        VarRef(VarRef(Core), :ccall), 
+        true)
+    depot[:Core][:(var"@__doc__")] = FunctionStore(VarRef(VarRef(Core), :(var"@__doc__")), cache_methods(getfield(Core, :(var"@__doc__"))), "", VarRef(VarRef(Core), :(var"@__doc__")), true)
+    return depot
 end
 
 function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
@@ -290,11 +311,11 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
             conn!==nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(LoadingBay, Symbol(pe_name))
         catch e
-            depot[uuid] = Package(pe_name, ModuleStore(pe_name), version(pe), uuid, sha_pkg(pe))
+            depot[uuid] = Package(pe_name, ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict(), "Failed to load package.", false), version(pe), uuid, sha_pkg(pe))
             return
         end
     end
-    depot[uuid] = Package(pe_name, get_module(m, Set(keys(deps(pe)))), version(pe), uuid, sha_pkg(pe))
+    depot[uuid] = Package(pe_name, cache_module(m, VarRef(m), Symbol.(collect(keys(deps(pe))))), version(pe), uuid, sha_pkg(pe))
 
     pe_path = pathof(m) isa String && !isempty(pathof(m)) ? joinpath(dirname(pathof(m)), "..") : nothing
 
@@ -305,75 +326,3 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
 
     return
 end
-
-function _functions()
-    sts = Base.IdSet{Any}()
-    visited = Base.IdSet{Module}()
-    for m in Base.loaded_modules_array()
-        InteractiveUtils._subtypes(m, Function, sts, visited)
-    end
-    return collect(sts)
-end
-
-function get_extended_methods(M::Module, allnames, out)
-    for f in _functions()
-        !hasproperty(f, :instance) && continue
-        !isdefined(f, :instance) && continue
-        for m in methods(f.instance)
-            if m.module == M && f.name.module != M && !(nameof(f) in allnames)
-                add_extended(m, out)
-            end
-        end
-    end
-end
-
-function add_extended(meth::Method, out)
-    !hasproperty(meth, :sig) && return
-    !hasproperty(Base.unwrap_unionall(meth.sig), :parameters)
-    ft = first(Base.unwrap_unionall(meth.sig).parameters)
-    !isdefined(ft, :instance) && return
-    f = ft.instance
-    fname = String(nameof(f))
-    haskey(out.vals, fname) && return # Already stored
-    pm = String.(split(string(Base.parentmodule(f)), "."))
-    extends = TypeRef(fname, PackageRef(ntuple(i-> pm[i], length(pm)), false))
-    if haskey(out.vals, fname)
-        push!(out.vals[fname].methods, cache_method(meth, methods(f)))
-    else
-        out.vals[fname] = FunctionStore(MethodStore[cache_method(meth, methods(f))], "", extends, false)
-    end
-end
-
-function find_extended_methods(M::Module)
-    allnames = names(M, all = true, imported = true)
-    out = Set{Any}()
-    for f in _functions()
-        !hasproperty(f, :instance) && continue
-        !isdefined(f, :instance) && continue
-        for m in methods(f.instance)
-            if m.module == M && f.name.module != M && !(nameof(f) in allnames)
-                push!(out, m)
-            end
-        end
-    end
-    out
-end
-
-function collect_extended_methods(depot::Dict, extendeds = Dict{TypeRef,Vector{PackageRef}}())
-    for m in depot
-        collect_extended_methods(m[2], extendeds, PackageRef((m[1],), false))
-    end
-    extendeds
-end
-
-function collect_extended_methods(mod::ModuleStore, extendeds, mname = PackageRef((), false))
-    for (n,v) in mod.vals
-        if (v isa FunctionStore || v isa DataTypeStore) && v.extends !== nothing
-            haskey(extendeds, v.extends) ? push!(extendeds[v.extends], mname) : (extendeds[v.extends] = PackageRef[mname])
-        elseif v isa ModuleStore
-            collect_extended_methods(v, extendeds, extend_pkgref(mname, n))
-        end
-    end
-end
-
-extend_pkgref(pr::PackageRef{N}, m::String) where N = PackageRef(ntuple(i -> i <= N ? pr.name[i] : m, N + 1), pr.exported)
