@@ -220,40 +220,85 @@ function _doc(object)
         end
     end
     md = Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
-    return string(results)
+    return md === nothing ? "" : string(md)
 end
 
-function _lookup(vr::VarRef, depot::Dict)
+_lookup(vr::FakeUnion, depot::EnvStore, cont = false) = nothing
+_lookup(vr::FakeTypeName, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
+_lookup(vr::FakeUnionAll, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
+function _lookup(vr::VarRef, depot::EnvStore, cont = false)
     if vr.parent === nothing
         if haskey(depot, vr.name)
-            return depot[vr.name]
+            val = depot[vr.name]
+            if cont && val isa VarRef
+                return _lookup(val, depot, cont)
+            else
+                return val
+            end
         else
             return nothing
         end
     else
         par = _lookup(vr.parent, depot)
         if par !== nothing && par isa ModuleStore && haskey(par, vr.name)
-            return par[vr.name]
+            val = par[vr.name]
+            if cont && val isa VarRef
+                return _lookup(val, depot, cont)
+            else
+                return val
+            end
         else
             return nothing
         end
     end
 end
 
-# function _lookup(tr::PackageRef{N}, depot::Dict{String,ModuleStore}) where N
-#     if haskey(depot, tr.name[1])
-#         if N == 1
-#             return depot[tr.name[1]]
-#         else
-#             return _lookup(tr, depot[tr.name[1]], 2)
-#         end
-#     end
-# end
+function issubmodof(m::Module, M::Module)
+    if m == M
+        return true
+    elseif parentmodule(m) === m
+        return false
+    elseif parentmodule(m) == M
+        return true
+    else
+        return issubmodof(parentmodule(m), M)
+    end
+end
 
-# function _lookup(tr::PackageRef{N}, m::ModuleStore, i) where N
-#     if i < N && haskey(m.vals, tr.name[i])
-#         _lookup(tr, m.vals[tr.name[i]], i + 1)
-#     elseif i == N && haskey(m.vals, tr.name[i])
-#         return m.vals[tr.name[i]]
-#     end
-# end
+
+
+function Base.print(io::IO, f::FunctionStore)
+    println(io, f.name, " is a Function.")
+    nm = length(f.methods)
+    println(io, "# $nm method", nm == 1 ? "" : "s", "for function ", f.name)
+    for i = 1:nm
+        print(io, "[$i] ")
+        println(io, f.methods[i])
+    end
+end
+
+function Base.print(io::IO, m::MethodStore)
+    print(io, m.name, "(")
+    for i = 1:length(m.sig)
+        if m.sig[i][1] != Symbol("#unused#")
+            print(io, m.sig[i][1])
+        end
+        print(io, "::", m.sig[i][2])
+        i != length(m.sig) && print(io, ", ")
+    end
+    print(io, ")")
+end
+
+function Base.print(io::IO, t::DataTypeStore)
+    print(io, t.name, " <: ", t.super)
+    for i = 1:length(t.fieldnames)
+        print(io, "\n  ", t.fieldnames[i], "::", t.types[i])
+    end
+end
+
+Base.print(io::IO, m::ModuleStore) = print(io, m.name)
+Base.print(io::IO, x::GenericStore) = print(io, x.name, "::", x.typ)
+
+extends_methods(f) = false
+extends_methods(f::FunctionStore) = f.name != f.extends
+get_top_module(vr::VarRef) = vr.parent === nothing ? vr.name : get_top_module(vr.parent)

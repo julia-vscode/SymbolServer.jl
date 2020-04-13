@@ -2,10 +2,11 @@ module SymbolServer
 
 export SymbolServerInstance, getstore
 
-using Serialization, Pkg, SHA, InteractiveUtils
+using Serialization, Pkg, SHA
 using Base: UUID, Process
 import Sockets, UUIDs
 
+include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
 
@@ -34,7 +35,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
     end
 
-    stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()    
+    stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
 
     if ssi.process!==nothing
         to_cancel_p = ssi.process
@@ -89,7 +90,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     take!(server_is_ready)
 
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
     ssi.process = p
 
     if success(p)
@@ -144,7 +145,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     pe = frommanifest(manifest, uuid)
     pe_name = packagename(manifest, uuid)
 
-    haskey(store, pe_name) && return
+    haskey(store, Symbol(pe_name)) && return
 
     if isfile(cache_path)
         try

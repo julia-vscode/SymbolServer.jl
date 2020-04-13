@@ -29,6 +29,9 @@ using Test
 
         ret_status2, store2 = getstore(ssi, path)
 
+        if ret_status2 == :failure
+            @info String(take!(store2))
+        end
         @test ret_status2 == :success
         @test length(store2) == 6
         @test haskey(store2, :Core)
