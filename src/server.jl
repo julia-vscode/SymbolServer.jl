@@ -65,9 +65,6 @@ written_caches = String[]
 
 # First get a list of all package UUIds that we want to cache
 toplevel_pkgs = deps(project(ctx))
-for (u,n) in ctx.stdlibs
-    push!(toplevel_pkgs, n=>u)
-end
 
 # Next make sure the cache is up-to-date for all of these
 for (pk_name, uuid) in toplevel_pkgs
