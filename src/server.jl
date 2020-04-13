@@ -25,7 +25,7 @@ end
 module LoadingBay
 end
 
-using Serialization, Pkg, SHA, InteractiveUtils
+using Serialization, Pkg, SHA
 using Base: UUID
 
 include("faketypes.jl")
