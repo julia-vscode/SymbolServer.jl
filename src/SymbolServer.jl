@@ -6,6 +6,7 @@ using Serialization, Pkg, SHA
 using Base: UUID, Process
 import Sockets, UUIDs
 
+include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
 
@@ -34,7 +35,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
     end
 
-    stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()    
+    stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
 
     if ssi.process!==nothing
         to_cancel_p = ssi.process
@@ -144,14 +145,14 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     pe = frommanifest(manifest, uuid)
     pe_name = packagename(manifest, uuid)
 
-    haskey(store, pe_name) && return
+    haskey(store, Symbol(pe_name)) && return
 
     if isfile(cache_path)
         try
             package_data = open(cache_path) do io
                 deserialize(io)
             end
-            store[pe_name] = package_data.val
+            store[Symbol(pe_name)] = package_data.val
             for dep in deps(pe)
                 load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store)
             end

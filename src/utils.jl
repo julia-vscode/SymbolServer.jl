@@ -191,48 +191,114 @@ function sha_pkg(pe::PackageEntry)
     path(pe) isa String && isdir(path(pe)) && isdir(joinpath(path(pe), "src")) ? sha2_256_dir(joinpath(path(pe), "src")) : nothing
 end
 
-function hasfields(@nospecialize t)
-    if t isa UnionAll || t isa Union
-        t = Base.argument_datatype(t)
-        if t === nothing
-            return false
-        end
-        t = t::DataType
-    elseif t == Union{}
-        return false
+function _doc(object)
+    binding = Base.Docs.aliasof(object, typeof(object))
+    !(binding isa Base.Docs.Binding) && return ""
+    sig = Union{}
+    if Base.Docs.defined(binding)
+        result = Base.Docs.getdoc(Base.Docs.resolve(binding), sig)
+        result === nothing || return result
     end
-    if !(t isa DataType)
-        return false
+    results, groups = Base.Docs.DocStr[], Base.Docs.MultiDoc[]
+    # Lookup `binding` and `sig` for matches in all modules of the docsystem.
+    for mod in Base.Docs.modules
+        dict = Base.Docs.meta(mod)
+        if haskey(dict, binding)
+            multidoc = dict[binding]
+            push!(groups, multidoc)
+            for msig in multidoc.order
+                sig <: msig && push!(results, multidoc.docs[msig])
+            end
+        end
     end
-    if t.name === Base.NamedTuple_typename
-        names, types = t.parameters
-        if names isa Tuple
-            return true
+    if isempty(groups)
+        alias = Base.Docs.aliasof(binding)
+        alias == binding ? "" : _doc(alias, sig)
+    elseif isempty(results)
+        for group in groups, each in group.order
+            push!(results, group.docs[each])
         end
-        if types isa DataType && types <: Tuple
-            return fieldcount(types)
+    end
+    md = Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
+    return md === nothing ? "" : string(md)
+end
+
+_lookup(vr::FakeUnion, depot::EnvStore, cont = false) = nothing
+_lookup(vr::FakeTypeName, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
+_lookup(vr::FakeUnionAll, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
+function _lookup(vr::VarRef, depot::EnvStore, cont = false)
+    if vr.parent === nothing
+        if haskey(depot, vr.name)
+            val = depot[vr.name]
+            if cont && val isa VarRef
+                return _lookup(val, depot, cont)
+            else
+                return val
+            end
+        else
+            return nothing
         end
-        abstr = true
     else
-        abstr = t.abstract || (t.name === Tuple.name && Base.isvatuple(t))
+        par = _lookup(vr.parent, depot)
+        if par !== nothing && par isa ModuleStore && haskey(par, vr.name)
+            val = par[vr.name]
+            if cont && val isa VarRef
+                return _lookup(val, depot, cont)
+            else
+                return val
+            end
+        else
+            return nothing
+        end
     end
-    if abstr
-        return false
-    end
-    if isdefined(t, :types)
+end
+
+function issubmodof(m::Module, M::Module)
+    if m == M
         return true
-    end
-    return true
-end
-
-@static if isdefined(Base, :datatype_fieldtypes)
-    function get_fieldtypes(t::DataType)
-        !isempty(Base.datatype_fieldtypes(t)) ? TypeRef.(collect(Base.datatype_fieldtypes(t))) : TypeRef[]
-    end
-else
-    function get_fieldtypes(t::DataType)
-        isdefined(t, :types) ? TypeRef.(collect(t.types)) : TypeRef[]
+    elseif parentmodule(m) === m
+        return false
+    elseif parentmodule(m) == M
+        return true
+    else
+        return issubmodof(parentmodule(m), M)
     end
 end
 
-include("baseshow.jl")
+
+
+function Base.print(io::IO, f::FunctionStore)
+    println(io, f.name, " is a Function.")
+    nm = length(f.methods)
+    println(io, "# $nm method", nm == 1 ? "" : "s", "for function ", f.name)
+    for i = 1:nm
+        print(io, "[$i] ")
+        println(io, f.methods[i])
+    end
+end
+
+function Base.print(io::IO, m::MethodStore)
+    print(io, m.name, "(")
+    for i = 1:length(m.sig)
+        if m.sig[i][1] != Symbol("#unused#")
+            print(io, m.sig[i][1])
+        end
+        print(io, "::", m.sig[i][2])
+        i != length(m.sig) && print(io, ", ")
+    end
+    print(io, ")")
+end
+
+function Base.print(io::IO, t::DataTypeStore)
+    print(io, t.name, " <: ", t.super)
+    for i = 1:length(t.fieldnames)
+        print(io, "\n  ", t.fieldnames[i], "::", t.types[i])
+    end
+end
+
+Base.print(io::IO, m::ModuleStore) = print(io, m.name)
+Base.print(io::IO, x::GenericStore) = print(io, x.name, "::", x.typ)
+
+extends_methods(f) = false
+extends_methods(f::FunctionStore) = f.name != f.extends
+get_top_module(vr::VarRef) = vr.parent === nothing ? vr.name : get_top_module(vr.parent)

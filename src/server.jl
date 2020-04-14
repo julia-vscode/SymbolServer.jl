@@ -28,6 +28,7 @@ end
 using Serialization, Pkg, SHA
 using Base: UUID
 
+include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
 
@@ -45,6 +46,18 @@ server = Server(store_path, ctx, Dict{Any,Any}())
 function write_cache(name, pkg)
     open(joinpath(server.storedir, name), "w") do io
         serialize(io, pkg)
+    end
+end
+
+function write_depot(server, ctx, written_caches)
+    for  (uuid, pkg) in server.depot
+        filename = get_filename_from_name(ctx.env.manifest, uuid)
+        filename===nothing && continue
+        cache_path = joinpath(server.storedir, filename)
+        cache_path in written_caches && continue
+        push!(written_caches, cache_path)
+        @info "Now writing to disc $uuid"
+        write_cache(cache_path, pkg)
     end
 end
 # List of caches that have already been written
@@ -70,30 +83,23 @@ for (pk_name, uuid) in toplevel_pkgs
         if is_package_deved(ctx.env.manifest, uuid)
             cached_version = open(cache_path) do io
                 deserialize(io)
-            end            
+            end
 
             if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
-                @info "Now recaching package $pk_name ($uuid)"
+                @info "Outdated sha, recaching package $pk_name ($uuid)"
                 cache_package(server.context, uuid, server.depot, conn)
+                write_depot(server, ctx, written_caches)
             else
                 @info "Package $pk_name ($uuid) is cached."
             end
-        else            
+        else
             @info "Package $pk_name ($uuid) is cached."
         end
     else
         @info "Now caching package $pk_name ($uuid)"
         cache_package(server.context, uuid, server.depot, conn)
         # Next write all package info to disc
-        for  (uuid, pkg) in server.depot
-            filename = get_filename_from_name(ctx.env.manifest, uuid)
-            filename===nothing && continue
-            cache_path = joinpath(server.storedir, filename)
-            cache_path in written_caches && continue
-            push!(written_caches, cache_path)
-            @info "Now writing to disc $uuid"
-            write_cache(cache_path, pkg)
-        end
+        write_depot(server, ctx, written_caches)
     end
 end
 
