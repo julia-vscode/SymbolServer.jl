@@ -90,7 +90,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     take!(server_is_ready)
 
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
     ssi.process = p
 
     if success(p)
