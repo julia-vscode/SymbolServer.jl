@@ -14,9 +14,13 @@ struct FakeTypeName
     parameters::Vector{Any}
 end
 
-function FakeTypeName(x)
+function FakeTypeName(x; justname = false)
     if x isa DataType
-        FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
+        if justname
+            FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
+        else
+            FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
+        end
     elseif x isa Union
         FakeUnion(x)
     elseif x isa UnionAll
@@ -34,20 +38,31 @@ struct FakeTypeofBottom end
 struct FakeUnion
     a
     b
-    FakeUnion(u::Union) = new(FakeTypeName(u.a), FakeTypeName(u.b))
+    FakeUnion(u::Union) = new(FakeTypeName(u.a, justname = true), FakeTypeName(u.b, justname = true))
 end
 struct FakeTypeVar
     name::Symbol
     lb
     ub
-    FakeTypeVar(tv::TypeVar) = new(tv.name, FakeTypeName(tv.lb), FakeTypeName(tv.ub))
+    FakeTypeVar(tv::TypeVar) = new(tv.name, FakeTypeName(tv.lb, justname = true), FakeTypeName(tv.ub, justname = true))
 end
 struct FakeUnionAll
     var::FakeTypeVar
     body::Any
-    FakeUnionAll(ua::UnionAll) = new(FakeTypeVar(ua.var), FakeTypeName(ua.body))
+    FakeUnionAll(ua::UnionAll) = new(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname = true))
 end
 
+function _parameter(p::T) where T
+    if p isa Union{Int,Symbol,Bool,Char}
+        p
+    elseif !(p isa Type) && isbitstype(T)
+        0
+    elseif p isa Tuple
+        _parameter.(p)
+    else
+        FakeTypeName(p, justname = true)
+    end
+end
 
 Base.print(io::IO, vr::VarRef) = vr.parent === nothing ? print(io, vr.name) : print(io, vr.parent, ".", vr.name)
 function Base.print(io::IO, tn::FakeTypeName)

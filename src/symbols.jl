@@ -78,17 +78,6 @@ struct GenericStore <: SymStore
     exported::Bool
 end
 
-function _parameter(p::T) where T
-    if p isa Union{Int,Symbol,Bool,Char}
-        p
-    elseif !(p isa Type) && isbitstype(T)
-        0
-    elseif p isa Tuple
-        _parameter.(p)
-    else
-        FakeTypeName(p)
-    end
-end
 
 function clean_method_path(m::Method)
     path = String(m.file)
@@ -130,12 +119,6 @@ function cache_methods(f, mod = nothing, exported = false)
             for i = 2:m[3].nargs
                 push!(MS.sig, argnames[i] => FakeTypeName(sig.parameters[i]))
             end
-            # kws = kwarg_decl(m[3])
-            # kws = if isdefined(typeof(f).name.mt, :kwsorter)
-            #     kwarg_decl(m[3], typeof(f).name.mt.kwsorter)
-            # else
-            #     Symbol[]
-            # end
             kws = getkws(m[3])
             for kw in kws
                 push!(MS.kws, kw)
