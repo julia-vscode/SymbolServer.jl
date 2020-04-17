@@ -134,11 +134,13 @@ getargnames(m::Method) = Base.method_argnames(m)
     getkws = Base.kwarg_decl
 else
     function getkws(m::Method) 
-        if Base.unwrap_unionall(m.sig).parameters[1] isa Union
-            return []
-        end
-        if isdefined(Base.unwrap_unionall(m.sig).parameters[1].name.mt, :kwsorter)
-            Base.kwarg_decl(m, typeof(Base.unwrap_unionall(m.sig).parameters[1].name.mt.kwsorter))
+        sig = Base.unwrap_unionall(m.sig)
+        length(sig.parameters) == 0 && return []
+        sig.parameters[1] isa Union && return []
+        !isdefined(Base.unwrap_unionall(sig.parameters[1]), :name) && return []
+        fname = Base.unwrap_unionall(sig.parameters[1]).name
+        if isdefined(fname.mt, :kwsorter)
+            Base.kwarg_decl(m, typeof(fname.mt.kwsorter))
         else 
             []
         end
