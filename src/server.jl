@@ -2,6 +2,8 @@ module SymbolServer
 
 import Sockets
 
+include("../../JSON/src/JSON.jl")
+
 pipename = length(ARGS) > 1 ? ARGS[2] : nothing
 
 conn = pipename!==nothing ? Sockets.connect(pipename) : nothing
@@ -46,6 +48,9 @@ server = Server(store_path, ctx, Dict{Any,Any}())
 function write_cache(name, pkg)
     open(joinpath(server.storedir, name), "w") do io
         serialize(io, pkg)
+    end
+    open(joinpath(server.storedir, name * ".json"), "w") do io
+        JSON.print(io, pkg)
     end
 end
 
