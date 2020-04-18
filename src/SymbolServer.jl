@@ -115,10 +115,28 @@ end
 
 function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)
     project_filename = isfile(joinpath(environment_path, "JuliaProject.toml")) ? joinpath(environment_path, "JuliaProject.toml") : joinpath(environment_path, "Project.toml")
-    project = Pkg.API.read_project(project_filename)
+    project = try
+        Pkg.API.read_project(project_filename)
+    catch err
+        if err isa Pkg.Types.PkgError
+            @warn "Could not load project."
+            return
+        else
+            rethrow(err)
+        end
+    end
 
     manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
-    manifest = Pkg.API.read_manifest(joinpath(environment_path, "Manifest.toml"))
+    manifest = try
+        Pkg.API.read_manifest(joinpath(environment_path, "Manifest.toml"))
+    catch err
+        if err isa Pkg.Types.PkgError
+            @warn "Could not load manifest."
+            return
+        else
+            rethrow(err)
+        end
+    end
 
     for uuid in values(deps(project))
         load_package_from_cache_into_store!(ssi, uuid, manifest, store)
