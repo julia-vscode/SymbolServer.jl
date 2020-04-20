@@ -225,7 +225,7 @@ end
 
 _lookup(vr::FakeUnion, depot::EnvStore, cont = false) = nothing
 _lookup(vr::FakeTypeName, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
-_lookup(vr::FakeUnionAll, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
+_lookup(vr::FakeUnionAll, depot::EnvStore, cont = false) = _lookup(vr.body, depot, cont)
 function _lookup(vr::VarRef, depot::EnvStore, cont = false)
     if vr.parent === nothing
         if haskey(depot, vr.name)
