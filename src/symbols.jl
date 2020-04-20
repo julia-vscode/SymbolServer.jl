@@ -98,7 +98,12 @@ function cache_methods(f, mod = nothing, exported = false)
     world = typemax(UInt)
     params = Core.Compiler.Params(world)
     ms = MethodStore[]
-    for m in Base._methods(f, types, -1, world)
+    methods0 = try
+        Base._methods(f, types, -1, world)
+    catch err
+        return ms
+    end
+    for m in methods0
         if mod === nothing || mod === m[3].module || (exported && issubmodof(m[3].module, mod))
             if true # Get return types? setting to false is costly
                 ty = Any
