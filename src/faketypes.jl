@@ -110,7 +110,7 @@ isfakebottom(t::FakeTypeofBottom) = true
 function Base.:(==)(a::FakeTypeName, b::FakeTypeName)
     a.name == b.name && length(a.parameters) == length(b.parameters) || return false
     for i = 1:length(a.parameters)
-        a.parameters[i] === b.parameters[i] && return false
+        a.parameters[i] == b.parameters[i] || return false
     end
     return true
 end
