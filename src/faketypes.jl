@@ -107,13 +107,7 @@ isfakeany(vr::VarRef) = vr.name === :Any && vr.parent isa VarRef && vr.parent.na
 isfakebottom(t) = false
 isfakebottom(t::FakeTypeofBottom) = true
 
-function Base.:(==)(a::FakeTypeName, b::FakeTypeName)
-    a.name == b.name && length(a.parameters) == length(b.parameters) || return false
-    for i = 1:length(a.parameters)
-        a.parameters[i] == b.parameters[i] || return false
-    end
-    return true
-end
+Base.:(==)(a::FakeTypeName, b::FakeTypeName) = a.name == b.name && a.parameters == b.parameters
 Base.:(==)(a::VarRef, b::VarRef) = a.parent == b.parent && a.name == b.name
 Base.:(==)(a::FakeTypeVar, b::FakeTypeVar) = a.lb == b.lb && a.name == b.name && a.ub == b.ub
 Base.:(==)(a::FakeUnionAll, b::FakeUnionAll) = a.var == b.var && a.body == b.body
