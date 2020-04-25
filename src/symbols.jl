@@ -12,6 +12,7 @@ struct ModuleStore <: SymStore
     vals::Dict{Symbol,Any}
     doc::String
     exported::Bool
+    exportednames::Vector{Symbol}
 end
 Base.getindex(m::ModuleStore, k) = m.vals[k]
 Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
@@ -172,9 +173,9 @@ end
 
 
 function cache_module(m::Module, mname::VarRef = VarRef(m), pkg_deps = Symbol[], isexported = true)
-    cache = ModuleStore(mname, Dict{Symbol,Any}(), _doc(m), isexported)
     allnames = names(m, all = true, imported = true)
     exportednames = names(m)
+    cache = ModuleStore(mname, Dict{Symbol,Any}(), _doc(m), isexported, exportednames)
     for name in allnames
         !isdefined(m, name) && continue
         x = getfield(m, name)
@@ -310,7 +311,7 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
             conn!==nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(LoadingBay, Symbol(pe_name))
         catch e
-            depot[uuid] = Package(pe_name, ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict(), "Failed to load package.", false), version(pe), uuid, sha_pkg(pe))
+            depot[uuid] = Package(pe_name, ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict(), "Failed to load package.", false, Symbol[]), version(pe), uuid, sha_pkg(pe))
             return
         end
     end
