@@ -25,6 +25,9 @@ end
 module LoadingBay
 end
 
+# Make sure we can load stdlibs 
+!in("@stdlib",LOAD_PATH) && push!(LOAD_PATH, "@stdlib")
+
 using Serialization, Pkg, SHA
 using Base: UUID
 
