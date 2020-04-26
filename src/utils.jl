@@ -219,7 +219,11 @@ function _doc(object)
             push!(results, group.docs[each])
         end
     end
-    md = Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
+    md = try
+        Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
+    catch err
+        nothing
+    end
     return md === nothing ? "" : string(md)
 end
 
