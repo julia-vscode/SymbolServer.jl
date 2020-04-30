@@ -174,6 +174,7 @@ end
 
 function cache_module(m::Module, mname::VarRef = VarRef(m), pkg_deps = Symbol[], isexported = true)
     allnames = names(m, all = true, imported = true)
+    isdefined(m, :parse) && !(:parse in allnames) && push!(allnames, :parse)
     exportednames = names(m)
     cache = ModuleStore(mname, Dict{Symbol,Any}(), _doc(m), isexported, exportednames)
     for name in allnames
