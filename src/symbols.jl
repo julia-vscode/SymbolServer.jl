@@ -13,7 +13,9 @@ struct ModuleStore <: SymStore
     doc::String
     exported::Bool
     exportednames::Vector{Symbol}
+    used_modules::Vector{Symbol}
 end
+
 Base.getindex(m::ModuleStore, k) = m.vals[k]
 Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
 Base.haskey(m::ModuleStore, k) = haskey(m.vals, k)
@@ -174,16 +176,17 @@ end
 
 function cache_module(m::Module, mname::VarRef = VarRef(m), pkg_deps = Symbol[], isexported = true)
     allnames = names(m, all = true, imported = true)
-    isdefined(m, :parse) && !(:parse in allnames) && push!(allnames, :parse)
-    exportednames = names(m)
-    cache = ModuleStore(mname, Dict{Symbol,Any}(), _doc(m), isexported, exportednames)
+    exportednames = filter(n->isdefined(m, n),names(m))
+    cache = ModuleStore(mname, Dict{Symbol,Any}(), _doc(m), isexported, exportednames, Symbol[])
     for name in allnames
         !isdefined(m, name) && continue
         x = getfield(m, name)
         vname = VarRef(mname, name)
         if x isa Module
-            (x == m || name == :Main) && continue
-            if parentmodule(x) == m
+            name == :Main && continue
+            if x == m
+                cache[name] = VarRef(x)
+            elseif parentmodule(x) == m
                 cache[name] = cache_module(x, VarRef(mname, name), pkg_deps, name in exportednames)
             else
                 cache[name] = VarRef(x)
@@ -197,7 +200,6 @@ function cache_module(m::Module, mname::VarRef = VarRef(m), pkg_deps = Symbol[],
         end
     end
 
-    # get_extended_methods(m, allnames, cache)
     apply_to_everything(
         function (x)
             x = Base.unwrap_unionall(x)
@@ -212,6 +214,16 @@ function cache_module(m::Module, mname::VarRef = VarRef(m), pkg_deps = Symbol[],
                     ms = cache_methods(x, m)
                     if !isempty(ms)
                         cache[nameof(x)] = FunctionStore(VarRef(VarRef(m), nameof(x)), ms, "", VarRef(VarRef(parentmodule(x)), nameof(x)), false)
+                    end
+                end
+            elseif x isa Module
+                # `using`ed modules don't get listed 
+                if isdefined(m, nameof(x))
+                    if !(nameof(x) in cache.used_modules) && all(isdefined(m, name2) || !isdefined(x, name2) for name2 in names(x)) && x != m
+                        push!(cache.used_modules, nameof(x))
+                    end
+                    if !haskey(cache.vals, nameof(x))
+                        cache.vals[nameof(x)] = VarRef(x)
                     end
                 end
             end
@@ -312,7 +324,7 @@ function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
             conn!==nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(LoadingBay, Symbol(pe_name))
         catch e
-            depot[uuid] = Package(pe_name, ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict(), "Failed to load package.", false, Symbol[]), version(pe), uuid, sha_pkg(pe))
+            depot[uuid] = Package(pe_name, ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict(), "Failed to load package.", false, Symbol[], Symbol[]), version(pe), uuid, sha_pkg(pe))
             return
         end
     end
