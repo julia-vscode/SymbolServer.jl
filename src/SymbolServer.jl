@@ -16,7 +16,7 @@ mutable struct SymbolServerInstance
     canceled_processes::Set{Process}
     store_path::String
 
-    function SymbolServerInstance(depot_path::String="", store_path::Union{String,String}=nothing)
+    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing)
         return new(nothing, depot_path, Set{Process}(), store_path===nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path)
     end
 end
