@@ -257,6 +257,31 @@ function _lookup(vr::VarRef, depot::EnvStore, cont = false)
     end
 end
 
+"""
+    maybe_getfield(k::Symbol , m::SymbolServer.ModuleStore, server)
+
+Try to get `k` from `m`. This includes: unexported variables, and variables
+exported by modules used within `m`.
+"""
+function maybe_getfield(k::Symbol , m::SymbolServer.ModuleStore, envstore)
+    if haskey(m.vals, k)
+        return m.vals[k]
+    else
+        for v in m.used_modules
+            !haskey(m.vals, v) && continue
+            submod = m.vals[v]
+            if submod isa ModuleStore && k in submod.exportednames
+                return submod.vals[k]
+            elseif submod isa VarRef
+                submod = _lookup(submod, envstore, true)
+                if submod isa ModuleStore && k in submod.exportednames
+                    return submod.vals[k]
+                end
+            end
+        end
+    end
+end
+
 function issubmodof(m::Module, M::Module)
     if m == M
         return true
