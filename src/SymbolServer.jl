@@ -16,8 +16,8 @@ mutable struct SymbolServerInstance
     canceled_processes::Set{Process}
     store_path::String
 
-    function SymbolServerInstance(depot_path::String="", store_path::String=abspath(joinpath(@__DIR__, "..", "store")))
-        return new(nothing, depot_path, Set{Process}(), store_path)
+    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing)
+        return new(nothing, depot_path, Set{Process}(), store_path===nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path)
     end
 end
 
@@ -115,10 +115,28 @@ end
 
 function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)
     project_filename = isfile(joinpath(environment_path, "JuliaProject.toml")) ? joinpath(environment_path, "JuliaProject.toml") : joinpath(environment_path, "Project.toml")
-    project = Pkg.API.read_project(project_filename)
+    project = try
+        Pkg.API.read_project(project_filename)
+    catch err
+        if err isa Pkg.Types.PkgError
+            @warn "Could not load project."
+            return
+        else
+            rethrow(err)
+        end
+    end
 
     manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
-    manifest = Pkg.API.read_manifest(joinpath(environment_path, "Manifest.toml"))
+    manifest = try
+        Pkg.API.read_manifest(joinpath(environment_path, "Manifest.toml"))
+    catch err
+        if err isa Pkg.Types.PkgError
+            @warn "Could not load manifest."
+            return
+        else
+            rethrow(err)
+        end
+    end
 
     for uuid in values(deps(project))
         load_package_from_cache_into_store!(ssi, uuid, manifest, store)
@@ -159,7 +177,13 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
         catch err
             Base.display_error(stderr, err, catch_backtrace())
             @warn "Tried to load $pe_name but failed to load from disc, re-caching."
-            rm(cache_path)
+            try
+                rm(cache_path)
+            catch err2
+                # There could have been a race condition that the file has been deleted in the meantime,
+                # we don't want to crash then.
+                err2 isa Base.IOError || rethrow(err2)
+            end
         end
     else
         @warn "$(pe_name) not stored on disc"

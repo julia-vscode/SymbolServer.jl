@@ -219,13 +219,17 @@ function _doc(object)
             push!(results, group.docs[each])
         end
     end
-    md = Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
+    md = try
+        Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
+    catch err
+        nothing
+    end
     return md === nothing ? "" : string(md)
 end
 
 _lookup(vr::FakeUnion, depot::EnvStore, cont = false) = nothing
 _lookup(vr::FakeTypeName, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
-_lookup(vr::FakeUnionAll, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
+_lookup(vr::FakeUnionAll, depot::EnvStore, cont = false) = _lookup(vr.body, depot, cont)
 function _lookup(vr::VarRef, depot::EnvStore, cont = false)
     if vr.parent === nothing
         if haskey(depot, vr.name)
@@ -249,6 +253,31 @@ function _lookup(vr::VarRef, depot::EnvStore, cont = false)
             end
         else
             return nothing
+        end
+    end
+end
+
+"""
+    maybe_getfield(k::Symbol , m::SymbolServer.ModuleStore, server)
+
+Try to get `k` from `m`. This includes: unexported variables, and variables
+exported by modules used within `m`.
+"""
+function maybe_getfield(k::Symbol , m::SymbolServer.ModuleStore, envstore)
+    if haskey(m.vals, k)
+        return m.vals[k]
+    else
+        for v in m.used_modules
+            !haskey(m.vals, v) && continue
+            submod = m.vals[v]
+            if submod isa ModuleStore && k in submod.exportednames
+                return submod.vals[k]
+            elseif submod isa VarRef
+                submod = _lookup(submod, envstore, true)
+                if submod isa ModuleStore && k in submod.exportednames
+                    return submod.vals[k]
+                end
+            end
         end
     end
 end
