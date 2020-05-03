@@ -37,6 +37,9 @@ include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
 
+# TODO Does this make sense?
+JSON.lower(x::FakeTypeofBottom) = Dict("FakeTypeofBottom"=>nothing)
+
 store_path = length(ARGS)>0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
 ctx = try
