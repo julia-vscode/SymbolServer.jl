@@ -16,6 +16,8 @@ end
 
 function FakeTypeName(x; justname = false)
     if x isa DataType
+        xname = x.name
+        xnamename = xname.name
         if justname
             FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
         else
