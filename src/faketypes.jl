@@ -40,19 +40,19 @@ struct FakeTypeofBottom end
 struct FakeUnion
     a
     b
-    FakeUnion(u::Union) = new(FakeTypeName(u.a, justname = true), FakeTypeName(u.b, justname = true))
 end
+FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a, justname = true), FakeTypeName(u.b, justname = true))
 struct FakeTypeVar
     name::Symbol
     lb
     ub
-    FakeTypeVar(tv::TypeVar) = new(tv.name, FakeTypeName(tv.lb, justname = true), FakeTypeName(tv.ub, justname = true))
 end
+FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb, justname = true), FakeTypeName(tv.ub, justname = true))
 struct FakeUnionAll
     var::FakeTypeVar
     body::Any
-    FakeUnionAll(ua::UnionAll) = new(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname = true))
 end
+FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname = true))
 
 function _parameter(p::T) where T
     if p isa Union{Int,Symbol,Bool,Char}
