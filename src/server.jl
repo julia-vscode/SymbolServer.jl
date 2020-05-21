@@ -151,6 +151,7 @@ end
 
 # Which project dependencies did't we load?
 for (pkg_name, uuid) in toplevel_pkgs
+    uuid = uuid isa String ? UUID(uuid) : uuid # julia versions < 1.? store UUIDs as Strings
     if !(uuid in keys(server.depot))
         pe = frommanifest(ctx, uuid)
         server.depot[uuid] = Package(pkg_name, ModuleStore(VarRef(nothing, Symbol(pkg_name)), Dict(), "Failed to load package.", false, Symbol[], Symbol[]), version(pe), uuid, sha_pkg(pe))
