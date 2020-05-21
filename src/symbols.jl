@@ -107,8 +107,10 @@ function cache_methods(f, mod = nothing, exported = false)
     catch err
         return ms
     end
+    ind_of_method_w_kws = Int[] # stores the index of methods with kws.
+    i = 1
     for m in methods0
-        if mod === nothing || mod === m[3].module #|| (exported && issubmodof(m[3].module, mod))
+        if mod === nothing || mod === m[3].module
             if true # Get return types? setting to false is costly
                 ty = Any
             elseif isdefined(m[3], :generator) && !Base.may_invoke_generator(m[3], types, m[2])
@@ -129,10 +131,24 @@ function cache_methods(f, mod = nothing, exported = false)
                 push!(MS.sig, argnames[i] => FakeTypeName(sig.parameters[i]))
             end
             kws = getkws(m[3])
+            if !isempty(kws)
+                push!(ind_of_method_w_kws, i)
+            end
             for kw in kws
                 push!(MS.kws, kw)
             end
             push!(ms, MS)
+            i +=1 
+        end
+    end
+    # Go back and add kws to methods defined in the same place as others with kws.
+    for i in ind_of_method_w_kws
+        for j = 1:length(ms) # only need to go up to `i`?
+            if ms[j].file == ms[i].file && ms[j].line == ms[i].line && isempty(ms[j].kws)
+                for kw in ms[i].kws
+                    push!(ms[j].kws, kw)
+                end
+            end
         end
     end
     return ms
@@ -273,7 +289,11 @@ function symbols(env, m = nothing, an = allnames(), visited = Base.IdSet{Module}
             !isdefined(m, s) && continue
             x = getfield(m, s)
             if x isa DataType
-                cache[s] = DataTypeStore(x, m, s in names(m))
+                if parentmodule(x) === m 
+                    cache[s] = DataTypeStore(x, m, s in names(m))
+                else
+                    cache[s] = FunctionStore(x, m, s in names(m))
+                end
             elseif x isa Function
                 if parentmodule(x) === m 
                     cache[s] = FunctionStore(x, m, s in names(m))
