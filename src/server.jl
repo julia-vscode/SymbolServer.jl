@@ -149,6 +149,14 @@ for (pkg_name, cache) in env_symbols
     # write(errs, "$pkg_name written to depot\n")
 end
 
+# Which project dependencies did't we load?
+for (pkg_name, uuid) in toplevel_pkgs
+    if !(uuid in keys(server.depot))
+        pe = frommanifest(ctx, uuid)
+        server.depot[uuid] = Package(pkg_name, ModuleStore(VarRef(nothing, Symbol(pkg_name)), Dict(), "Failed to load package.", false, Symbol[], Symbol[]), version(pe), uuid, sha_pkg(pe))
+    end
+end
+
 # Write to disc
 write_depot(server, server.context, written_caches)
 end_time = time_ns()
