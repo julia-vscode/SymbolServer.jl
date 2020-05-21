@@ -388,7 +388,7 @@ function load_core()
 end
 
 
-function collect_extended_methods(depot::Dict, extendeds = Dict{VarRef,Vector{VarRef}}())
+function collect_extended_methods(depot::EnvStore, extendeds = Dict{VarRef,Vector{VarRef}}())
     for m in depot
         collect_extended_methods(m[2], extendeds, m[2].name)
     end
