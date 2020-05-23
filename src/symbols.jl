@@ -87,7 +87,7 @@ function clean_method_path(m::Method)
     path = String(m.file)
     if !isabspath(path) 
         path = Base.find_source_file(path)
-        if path == nothing
+        if path === nothing
             path = ""
         end
     end
@@ -251,11 +251,13 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     for s in names(m, all = true)
         !isdefined(m, s) && continue
         x = getfield(m, s)
-        if x isa Module && !in(x, visited)
+        if x isa Module
             if istoplevelmodule(x)
                 cache[s] = VarRef(x)
-            else
+            elseif m === parentmodule(x)
                 cache[s] = getmoduletree(x, amn, visited)
+            else
+                @warn "We shouldn't be able to get here, marking submodule $s in $m"
             end
         end
     end
@@ -282,7 +284,7 @@ end
 
 function symbols(env, m = nothing, an = allnames(), visited = Base.IdSet{Module}())
     if m isa Module
-        cache = _lookup(VarRef(m), env)
+        cache = _lookup(VarRef(m), env, true)
         cache === nothing && return 
         push!(visited, m)
         for s in an

@@ -243,7 +243,7 @@ function _lookup(vr::VarRef, depot::EnvStore, cont = false)
             return nothing
         end
     else
-        par = _lookup(vr.parent, depot)
+        par = _lookup(vr.parent, depot, cont)
         if par !== nothing && par isa ModuleStore && haskey(par, vr.name)
             val = par[vr.name]
             if cont && val isa VarRef
