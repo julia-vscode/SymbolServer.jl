@@ -257,7 +257,7 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
             elseif m === parentmodule(x)
                 cache[s] = getmoduletree(x, amn, visited)
             else
-                @warn "We shouldn't be able to get here, marking submodule $s in $m"
+                cache[s] = VarRef(x)
             end
         end
     end
