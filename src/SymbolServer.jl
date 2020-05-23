@@ -187,6 +187,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
         end
     else
         @warn "$(pe_name) not stored on disc"
+        store[Symbol(pe_name)] = ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict{Symbol,Any}(), "$pe_name failed to load.", true, Symbol[], Symbol[])
     end
 end
 
