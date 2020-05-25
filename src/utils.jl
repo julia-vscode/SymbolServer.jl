@@ -192,6 +192,7 @@ function sha_pkg(pe::PackageEntry)
 end
 
 function _doc(object)
+    try
     binding = Base.Docs.aliasof(object, typeof(object))
     !(binding isa Base.Docs.Binding) && return ""
     sig = Union{}
@@ -225,6 +226,9 @@ function _doc(object)
         nothing
     end
     return md === nothing ? "" : string(md)
+    catch e
+        return ""
+    end
 end
 
 _lookup(vr::FakeUnion, depot::EnvStore, cont = false) = nothing
