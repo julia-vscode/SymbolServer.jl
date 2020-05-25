@@ -192,6 +192,7 @@ function sha_pkg(pe::PackageEntry)
 end
 
 function _doc(object)
+    try
     binding = Base.Docs.aliasof(object, typeof(object))
     !(binding isa Base.Docs.Binding) && return ""
     sig = Union{}
@@ -225,6 +226,9 @@ function _doc(object)
         nothing
     end
     return md === nothing ? "" : string(md)
+    catch e
+        return ""
+    end
 end
 
 _lookup(vr::FakeUnion, depot::EnvStore, cont = false) = nothing
@@ -243,7 +247,7 @@ function _lookup(vr::VarRef, depot::EnvStore, cont = false)
             return nothing
         end
     else
-        par = _lookup(vr.parent, depot)
+        par = _lookup(vr.parent, depot, cont)
         if par !== nothing && par isa ModuleStore && haskey(par, vr.name)
             val = par[vr.name]
             if cont && val isa VarRef
@@ -258,12 +262,12 @@ function _lookup(vr::VarRef, depot::EnvStore, cont = false)
 end
 
 """
-    maybe_getfield(k::Symbol , m::SymbolServer.ModuleStore, server)
+    maybe_getfield(k::Symbol , m::ModuleStore, server)
 
 Try to get `k` from `m`. This includes: unexported variables, and variables
 exported by modules used within `m`.
 """
-function maybe_getfield(k::Symbol , m::SymbolServer.ModuleStore, envstore)
+function maybe_getfield(k::Symbol , m::ModuleStore, envstore)
     if haskey(m.vals, k)
         return m.vals[k]
     else

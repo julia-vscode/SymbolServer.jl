@@ -1,9 +1,48 @@
 using SymbolServer, Pkg
-using SymbolServer: packagename, packageuuid, deps, manifest, project, version, Package, frommanifest
+using SymbolServer: packagename, packageuuid, deps, manifest, project, version, Package, frommanifest, allnames, VarRef, _lookup
 using Base:UUID
 using Test
 
+function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env)
+    an = allnames()
+    notfound = Symbol[]
+    notfoundhidden = Symbol[]
+    for n in names(m, all = true, imported = true)
+        if isdefined(m, n) && !haskey(cache.vals, n)
+            push!(notfound, n)
+        end
+    end
+    for n in an
+        if isdefined(m, n) && !haskey(cache, n)
+            found = false
+            for u in cache.used_modules
+                if (submod = get(cache.vals, u, nothing)) !== nothing
+                    # m has used a submodule
+                    submod = submod isa VarRef ? _lookup(submod, env) : submod
+                    if submod isa SymbolServer.ModuleStore && n in submod.exportednames
+                        found = true
+                        break
+                    end
+                end
+                if haskey(env, u) && haskey(env[u].vals, n)
+                    # m has used a toplevel module
+                    found = true
+                    break
+                end
+            end
+            !found && !(n in notfound) && push!(notfoundhidden, n)
+        end
+    end
+    notfound, notfoundhidden
+end
+
 @testset "SymbolServer" begin
+    env = SymbolServer.getenvtree([:Base, :Core])
+    SymbolServer.symbols(env)
+    r = missingsymbols(Core, env[:Core], env)
+    @test length.(r) == (0,0)
+    r = missingsymbols(Base, env[:Base], env)
+    @test length.(r) == (0,0)
 
     mktempdir() do path
         cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
@@ -32,6 +71,9 @@ using Test
         if ret_status2 == :failure
             @info String(take!(store2))
         end
+        @info keys(store2)
+        @info readdir(store_path)
+
         @test ret_status2 == :success
         @test length(store2) == 6
         @test haskey(store2, :Core)
