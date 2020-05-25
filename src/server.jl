@@ -42,6 +42,13 @@ catch err
     @info "Package environment can't be read."
     exit()
 end
+# Add some methods to check whether a package is part of the standard library and so
+# won't need recaching.
+if isdefined(Pkg.Types, :is_stdlib)
+    is_stdlib(uuid::UUID) = Pkg.Types.is_stdlib(uuid)
+else
+    is_stdlib(uuid::UUID) = uuid in keys(ctx.stdlibs)
+end
 
 server = Server(store_path, ctx, Dict{UUID,Package}())
 
@@ -126,8 +133,22 @@ end
 # Create image of whole package env. This creates the module structure only.
 env_symbols = getenvtree()
 
-# Populate the above with symbols
-symbols(env_symbols)
+# Populate the above with symbols, skipping modules that don't need caching.
+# symbols (env_symbols)
+an = allnames()
+visited = Base.IdSet{Module}([Base, Core]) # don't need to cache these each time...
+for (pid, m) in Base.loaded_modules
+    if pid.uuid !== nothing && is_stdlib(pid.uuid) && 
+        (file_name = get_filename_from_name(ctx.env.manifest, pid.uuid)) !== nothing && 
+        isfile(joinpath(server.storedir, file_name))
+        push!(visited, m)
+        delete!(env_symbols, Symbol(pid.name))
+    end
+end
+
+for m in Base.loaded_modules_array()
+    in(m, visited) || symbols(env_symbols, m, an, visited)
+end
 
 # Wrap the `ModuleStore`s as `Package`s.
 for (pkg_name, cache) in env_symbols
