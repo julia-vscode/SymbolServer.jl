@@ -9,6 +9,7 @@ import Sockets, UUIDs
 include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
+include("serialize.jl")
 
 mutable struct SymbolServerInstance
     process::Union{Nothing,Base.Process}
