@@ -48,6 +48,13 @@ function write(io, x::Symbol)
     Base.write(io, sizeof(x))
     Base.write(io, String(x))
 end
+function write(io, x::NTuple{N,Any}) where N
+    Base.write(io, TupleHeader)
+    Base.write(io, N)
+    for i = 1:N
+        write(io, x[i])
+    end
+end
 function write(io, x::String)
     Base.write(io, StringHeader)
     Base.write(io, sizeof(x))
@@ -215,6 +222,9 @@ function read(io, t = Base.read(io, UInt8))
         true
     elseif t === FalseHeader
         false
+    elseif t === TupleHeader
+        N = Base.read(io, Int)
+        ntuple(i->read(io), N)
     else
         error("HIYA")
     end
