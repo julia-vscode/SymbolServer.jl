@@ -1,6 +1,7 @@
 module SymbolServer
 import Sockets
-
+rm("/home/zac/tmp/ss.log")
+io = open("/home/zac/tmp/ss.log", "a")
 pipename = length(ARGS) > 1 ? ARGS[2] : nothing
 
 conn = pipename!==nothing ? Sockets.connect(pipename) : nothing
@@ -55,18 +56,23 @@ server = Server(store_path, ctx, Dict{UUID,Package}())
 function load_package(c::Pkg.Types.Context, uuid, conn)
     isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
     pe_name = packagename(c, uuid)
+    write(io, "\n Loading: ", pe_name)
     pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
     if pid in keys(Base.loaded_modules)
+        write(io, ", was already loaded.")
         conn!==nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")
         LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(LoadingBay, Symbol(pe_name))
     else
         m = try
+            write(io, ", importing...")
             conn!==nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
             LoadingBay.eval(:(import $(Symbol(pe_name))))
             conn!==nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(LoadingBay, Symbol(pe_name))
+            write(io, "successfully.")
         catch e
+            write(io, "failed.")
             return
         end
     end
@@ -96,7 +102,9 @@ written_caches = String[]
 toplevel_pkgs = deps(project(ctx))
 packages_to_load = []
 # Next make sure the cache is up-to-date for all of these
+write(io, "Checking project:\n")
 for (pk_name, uuid) in toplevel_pkgs
+    write(io, pk_name, ": ")
     file_name = get_filename_from_name(ctx.env.manifest, uuid)
     # We sometimes have UUIDs in the project file that are not in the 
     # manifest file. That seems like something that shouldn't happen, but
@@ -106,23 +114,30 @@ for (pk_name, uuid) in toplevel_pkgs
     cache_path = joinpath(server.storedir, file_name)
 
     if isfile(cache_path)
+        write(io, "has file")
         if is_package_deved(ctx.env.manifest, uuid)
+            write(io, ", is dev'ed")
             cached_version = open(cache_path) do io
                 deserialize(io)
             end
             if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
                 @info "Outdated sha, will recache package $pk_name ($uuid)"
+                write(io, ", needs re-caching.")
                 push!(packages_to_load, uuid)
             else
+                write(io, ", cache ok.")
                 @info "Package $pk_name ($uuid) is cached."
             end
         else
+            write(io, ", cache loaded.")
             @info "Package $pk_name ($uuid) is cached."
         end
     else
+        write(io, ", needs caching.")
         @info "Will cache package $pk_name ($uuid)"
         push!(packages_to_load, uuid)
     end
+    write(io, "\n")
 end
 
 # Load all packages together
