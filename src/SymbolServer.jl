@@ -85,7 +85,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
             error_handler(err, bt)
         else
             Base.display_error(stderr, err, bt)
-        end        
+        end
     end
 
     take!(server_is_ready)
