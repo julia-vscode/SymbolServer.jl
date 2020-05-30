@@ -22,7 +22,7 @@ mutable struct SymbolServerInstance
 end
 
 function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing)
-    !ispath(environment_path) && return :success, deepcopy(stdlibs)
+    !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
     server_script = joinpath(@__DIR__, "server.jl")
@@ -96,13 +96,13 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     if success(p)
         # Now we create a new symbol store and load everything into that
         # from disc
-        new_store = deepcopy(stdlibs)
+        new_store = recursive_copy(stdlibs)
         load_project_packages_into_store!(ssi, environment_path, new_store)
 
         return :success, new_store
     elseif p in ssi.canceled_processes
         delete!(ssi.canceled_processes, p)
-        
+
         return :canceled, nothing
     else
         if currently_loading_a_package
