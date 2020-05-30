@@ -93,7 +93,7 @@ function Base.print(io::IO, x::FakeTypeVar)
         if isfakeany(x.ub)
             print(io, x.name)
         else
-            print(io, x.name,"<:",x.ub)
+            print(io, x.name, "<:", x.ub)
         end
     elseif isfakeany(x.ub)
         print(io, x.lb, "<:", x.name)
