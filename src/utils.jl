@@ -335,3 +335,76 @@ Base.print(io::IO, x::GenericStore) = print(io, x.name, "::", x.typ)
 extends_methods(f) = false
 extends_methods(f::FunctionStore) = f.name != f.extends
 get_top_module(vr::VarRef) = vr.parent === nothing ? vr.name : get_top_module(vr.parent)
+
+## recursive_copy
+#
+# `deepcopy` is reliable but incredibly slow. Its slowness comes from two factors:
+# - generically iterating over, e.g., `fieldnames(typeof(x))` rather than having a method
+#   optimized for each struct type
+# - its care to protect against circular depenency graphs
+# When you don't need to worry about cycles, you can do much better by defining your own function.
+
+recursive_copy(::Nothing) = nothing
+
+recursive_copy(s::Symbol) = s
+
+recursive_copy(str::String) = str
+
+recursive_copy(x::Number) = x
+
+recursive_copy(p::Pair) = typeof(p)(recursive_copy(p.first), recursive_copy(p.second))
+
+recursive_copy(A::Array) = eltype(A)[recursive_copy(a) for a in A]
+
+recursive_copy(d::Dict) = typeof(d)(recursive_copy(p) for p in d)
+
+
+recursive_copy(ref::VarRef) = VarRef(recursive_copy(ref.parent), ref.name)
+
+recursive_copy(tn::FakeTypeName) = FakeTypeName(recursive_copy(tn.name), recursive_copy(tn.parameters))
+
+recursive_copy(tb::FakeTypeofBottom) = tb
+
+recursive_copy(u::FakeUnion) = FakeUnion(recursive_copy(u.a), recursive_copy(u.b))
+
+recursive_copy(tv::FakeTypeVar) = FakeTypeVar(tv.name, recursive_copy(tv.lb), recursive_copy(tv.ub))
+
+recursive_copy(ua::FakeUnionAll) = FakeUnionAll(recursive_copy(ua.var), recursive_copy(ua.body))
+
+
+recursive_copy(m::ModuleStore) = ModuleStore(recursive_copy(m.name), recursive_copy(m.vals), m.doc,
+                                             m.exported, copy(m.exportednames), copy(m.used_modules))
+
+recursive_copy(p::Package) = Package(p.name,
+                                     recursive_copy(p.val),
+                                     recursive_copy(p.ver),
+                                     p.uuid,
+                                     recursive_copy(p.sha))
+
+recursive_copy(ms::MethodStore) = MethodStore(ms.name,
+                                              ms.mod,
+                                              ms.file,
+                                              ms.line,
+                                              recursive_copy(ms.sig),
+                                              copy(ms.kws),
+                                              recursive_copy(ms.rt))
+
+recursive_copy(dts::DataTypeStore) = DataTypeStore(recursive_copy(dts.name),
+                                                   recursive_copy(dts.super),
+                                                   recursive_copy(dts.parameters),
+                                                   recursive_copy(dts.types),
+                                                   recursive_copy(dts.fieldnames),
+                                                   recursive_copy(dts.methods),
+                                                   dts.doc,
+                                                   dts.exported)
+
+recursive_copy(fs::FunctionStore) = FunctionStore(recursive_copy(fs.name),
+                                                  recursive_copy(fs.methods),
+                                                  fs.doc,
+                                                  recursive_copy(fs.extends),
+                                                  fs.exported)
+
+recursive_copy(gs::GenericStore) = GenericStore(recursive_copy(gs.name),
+                                                recursive_copy(gs.typ),
+                                                gs.doc,
+                                                gs.exported)

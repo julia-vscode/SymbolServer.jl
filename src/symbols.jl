@@ -30,7 +30,7 @@ struct Package
     uuid::Base.UUID
     sha
 end
-Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha) 
+Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha)
 
 struct MethodStore
     name::Symbol
@@ -85,7 +85,7 @@ end
 
 function clean_method_path(m::Method)
     path = String(m.file)
-    if !isabspath(path) 
+    if !isabspath(path)
         path = Base.find_source_file(path)
         if path === nothing
             path = ""
@@ -138,7 +138,7 @@ function cache_methods(f, mod = nothing, exported = false)
                 push!(MS.kws, kw)
             end
             push!(ms, MS)
-            i +=1 
+            i +=1
         end
     end
     # Go back and add kws to methods defined in the same place as others with kws.
@@ -158,7 +158,7 @@ getargnames(m::Method) = Base.method_argnames(m)
 @static if length(first(methods(Base.kwarg_decl)).sig.parameters) == 2
     getkws = Base.kwarg_decl
 else
-    function getkws(m::Method) 
+    function getkws(m::Method)
         sig = Base.unwrap_unionall(m.sig)
         length(sig.parameters) == 0 && return []
         sig.parameters[1] isa Union && return []
@@ -166,7 +166,7 @@ else
         fname = Base.unwrap_unionall(sig.parameters[1]).name
         if isdefined(fname.mt, :kwsorter)
             Base.kwarg_decl(m, typeof(fname.mt.kwsorter))
-        else 
+        else
             []
         end
     end
@@ -210,21 +210,21 @@ function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
     end
 end
 
-function allnames() 
+function allnames()
     symbols = Base.IdSet{Symbol}()
     oneverything((m, s, x)->push!(symbols, s))
     return symbols
 end
 
-function allmodulenames() 
+function allmodulenames()
     symbols = Base.IdSet{Symbol}()
     oneverything((m, s, x)->(x isa Module && push!(symbols, s)))
     return symbols
 end
 
-function allthingswithmethods() 
+function allthingswithmethods()
     symbols = Base.IdSet{Any}()
-    oneverything(function (m, s, x) 
+    oneverything(function (m, s, x)
     if !Base.isvarargtype(x) && !isempty(methods(x))
         push!(symbols, x)
     end
@@ -232,9 +232,9 @@ function allthingswithmethods()
     return symbols
 end
 
-function allmethods() 
+function allmethods()
     ms = Method[]
-    oneverything(function (m, s, x) 
+    oneverything(function (m, s, x)
     if !Base.isvarargtype(x) && !isempty(methods(x))
         append!(ms, methods(x))
     end
@@ -264,7 +264,7 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     for n in amn
         if n !== nameof(m) && isdefined(m, n)
             x = getfield(m, n)
-            if x isa Module 
+            if x isa Module
                 if !istoplevelmodule(x) && !haskey(cache, n)
                     cache[n] = VarRef(x)
                 end
@@ -285,19 +285,19 @@ end
 function symbols(env, m = nothing, an = allnames(), visited = Base.IdSet{Module}())
     if m isa Module
         cache = _lookup(VarRef(m), env, true)
-        cache === nothing && return 
+        cache === nothing && return
         push!(visited, m)
         for s in an
             !isdefined(m, s) && continue
             x = getfield(m, s)
             if x isa DataType
-                if parentmodule(x) === m 
+                if parentmodule(x) === m
                     cache[s] = DataTypeStore(x, m, s in names(m))
                 else
                     cache[s] = FunctionStore(x, m, s in names(m))
                 end
             elseif x isa Function
-                if parentmodule(x) === m 
+                if parentmodule(x) === m
                     cache[s] = FunctionStore(x, m, s in names(m))
                 elseif any(met.module == m for met in methods(x))
                     cache[s] = FunctionStore(x, m, s in names(m))
@@ -311,7 +311,7 @@ function symbols(env, m = nothing, an = allnames(), visited = Base.IdSet{Module}
                     symbols(env, x, an, visited)
                 else
                     cache[s] = VarRef(x)
-                end 
+                end
             else
                 cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in names(m))
             end
@@ -380,8 +380,8 @@ function load_core()
         MethodStore[
             MethodStore(:ccall, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)) # General method - should be fixed
         ],
-        "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.", 
-        VarRef(VarRef(Core), :ccall), 
+        "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.",
+        VarRef(VarRef(Core), :ccall),
         true)
     cache[:Core][Symbol("@__doc__")] = FunctionStore(VarRef(VarRef(Core), Symbol("@__doc__")), cache_methods(getfield(Core, Symbol("@__doc__"))), "", VarRef(VarRef(Core), Symbol("@__doc__")), true)
     # Accounts for the dd situation where Base.rand only has methods from Random which doesn't appear to be explicitly used.
