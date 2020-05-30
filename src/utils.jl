@@ -191,7 +191,7 @@ function sha_pkg(pe::PackageEntry)
     path(pe) isa String && isdir(path(pe)) && isdir(joinpath(path(pe), "src")) ? sha2_256_dir(joinpath(path(pe), "src")) : nothing
 end
 
-function _doc(object)
+function _doc(@nospecialize(object))
     try
         binding = Base.Docs.aliasof(object, typeof(object))
         !(binding isa Base.Docs.Binding) && return ""
@@ -203,7 +203,7 @@ function _doc(object)
         results, groups = Base.Docs.DocStr[], Base.Docs.MultiDoc[]
     # Lookup `binding` and `sig` for matches in all modules of the docsystem.
         for mod in Base.Docs.modules
-            dict = Base.Docs.meta(mod)
+            dict = Base.Docs.meta(mod)::IdDict{Any,Any}
             if haskey(dict, binding)
                 multidoc = dict[binding]
                 push!(groups, multidoc)

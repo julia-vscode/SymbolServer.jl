@@ -53,7 +53,7 @@ struct DataTypeStore <: SymStore
     exported::Bool
 end
 
-function DataTypeStore(t::DataType, parent_mod, exported)
+function DataTypeStore(@nospecialize(t::DataType), parent_mod, exported)
     parameters = map(t.parameters) do p
         _parameter(p)
     end
@@ -71,7 +71,7 @@ struct FunctionStore <: SymStore
     exported::Bool
 end
 
-function FunctionStore(f, parent_mod, exported)
+function FunctionStore(@nospecialize(f), parent_mod, exported)
     FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), cache_methods(f, parent_mod, exported), _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
 end
 
@@ -94,7 +94,7 @@ function clean_method_path(m::Method)
     return normpath(path)
 end
 
-function cache_methods(f, mod = nothing, exported = false)
+function cache_methods(@nospecialize(f), mod = nothing, exported = false)
     if isa(f, Core.Builtin)
         return MethodStore[]
     end
