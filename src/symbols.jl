@@ -138,7 +138,7 @@ function cache_methods(f, mod = nothing, exported = false)
                 push!(MS.kws, kw)
             end
             push!(ms, MS)
-            i +=1
+            i += 1
         end
     end
     # Go back and add kws to methods defined in the same place as others with kws.
@@ -225,9 +225,9 @@ end
 function allthingswithmethods()
     symbols = Base.IdSet{Any}()
     oneverything(function (m, s, x)
-    if !Base.isvarargtype(x) && !isempty(methods(x))
-        push!(symbols, x)
-    end
+        if !Base.isvarargtype(x) && !isempty(methods(x))
+            push!(symbols, x)
+        end
     end)
     return symbols
 end
@@ -235,9 +235,9 @@ end
 function allmethods()
     ms = Method[]
     oneverything(function (m, s, x)
-    if !Base.isvarargtype(x) && !isempty(methods(x))
-        append!(ms, methods(x))
-    end
+        if !Base.isvarargtype(x) && !isempty(methods(x))
+            append!(ms, methods(x))
+        end
     end)
     return ms
 end
@@ -335,9 +335,9 @@ function load_core()
     end
     append!(cache[:Base][:include].methods, cache_methods(Base.MainInclude.include, Base.MainInclude))
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
-    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module),_doc(Main), true)
+    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main), true)
     # Add built-ins
-    builtins = Symbol[nameof(getfield(Core,n).instance) for n in names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
+    builtins = Symbol[nameof(getfield(Core, n).instance) for n in names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
     cnames = names(Core)
     for f in builtins
         if !haskey(cache[:Core], f)
@@ -345,7 +345,7 @@ function load_core()
         end
         push!(cache[:Core][f].methods, MethodStore(Symbol(f), :none, "built-in", 0, [], Symbol[], FakeTypeName(Any)))
     end
-    haskey(cache[:Core], :_typevar) && push!(cache[:Core][:_typevar].methods, MethodStore(:_typevar, :Core, "built-in", 0, [:n=>FakeTypeName(Symbol), :lb=>FakeTypeName(Any), :ub=>FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
+    haskey(cache[:Core], :_typevar) && push!(cache[:Core][:_typevar].methods, MethodStore(:_typevar, :Core, "built-in", 0, [:n => FakeTypeName(Symbol), :lb => FakeTypeName(Any), :ub => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:_apply].methods, MethodStore(:_apply, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
     haskey(cache[:Core].vals, :_apply_iterate) && push!(cache[:Core][:_apply_iterate].methods, MethodStore(:_apply_iterate, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:_apply_latest].methods, MethodStore(:_apply_latest, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
@@ -374,7 +374,7 @@ function load_core()
     push!(cache[:Core][:typeof].methods, MethodStore(:typeof, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Type)))
 
     push!(cache[:Core][:getproperty].methods, MethodStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:setproperty!].methods, MethodStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[],FakeTypeName(Any)))
+    push!(cache[:Core][:setproperty!].methods, MethodStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
 
     cache[:Core][:ccall] = FunctionStore(VarRef(VarRef(Core), :ccall),
         MethodStore[
@@ -398,7 +398,7 @@ function collect_extended_methods(depot::EnvStore, extendeds = Dict{VarRef,Vecto
 end
 
 function collect_extended_methods(mod::ModuleStore, extendeds, mname)
-    for (n,v) in mod.vals
+    for (n, v) in mod.vals
         if (v isa FunctionStore) && v.extends != v.name
             haskey(extendeds, v.extends) ? push!(extendeds[v.extends], mname) : (extendeds[v.extends] = VarRef[v.extends.parent, mname])
         elseif v isa ModuleStore

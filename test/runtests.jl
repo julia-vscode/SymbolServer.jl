@@ -40,9 +40,9 @@ end
     env = SymbolServer.getenvtree([:Base, :Core])
     SymbolServer.symbols(env)
     r = missingsymbols(Core, env[:Core], env)
-    @test length.(r) == (0,0)
+    @test length.(r) == (0, 0)
     r = missingsymbols(Base, env[:Base], env)
-    @test length.(r) == (0,0)
+    @test length.(r) == (0, 0)
 
     mktempdir() do path
         cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
