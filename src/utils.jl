@@ -299,7 +299,7 @@ end
 function Base.print(io::IO, f::FunctionStore)
     println(io, f.name, " is a Function.")
     nm = length(f.methods)
-    println(io, "# $nm method", nm == 1 ? "" : "s", "for function ", f.name)
+    println(io, "# $nm method", nm == 1 ? "" : "s", " for function ", f.name)
     for i = 1:nm
         print(io, "[$i] ")
         println(io, f.methods[i])
