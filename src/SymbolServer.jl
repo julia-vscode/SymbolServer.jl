@@ -24,7 +24,8 @@ end
 function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback = nothing, error_handler = nothing)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
-    jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+    # jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+    jl_cmd = Base.julia_cmd().exec[1] # Make sure we use the same Julia version in the worker process
     server_script = joinpath(@__DIR__, "server.jl")
 
     env_to_use = copy(ENV)
