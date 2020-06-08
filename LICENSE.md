@@ -1,6 +1,6 @@
 The SymbolServer.jl package is licensed under the MIT "Expat" License:
 
-> Copyright (c) 2018-2019: David Anthoff and Zac Nugent.
+> Copyright (c) 2018-2020: David Anthoff and Zac Nugent.
 >
 >
 > Permission is hereby granted, free of charge, to any person obtaining a copy

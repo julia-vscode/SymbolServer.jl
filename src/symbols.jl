@@ -16,6 +16,7 @@ struct ModuleStore <: SymStore
     used_modules::Vector{Symbol}
 end
 
+ModuleStore(m) = ModuleStore(VarRef(m), Dict{Symbol,Any}(), "", true, names(m), Symbol[])
 Base.getindex(m::ModuleStore, k) = m.vals[k]
 Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
 Base.haskey(m::ModuleStore, k) = haskey(m.vals, k)
@@ -29,7 +30,7 @@ struct Package
     uuid::Base.UUID
     sha
 end
-Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha) 
+Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha)
 
 struct MethodStore
     name::Symbol
@@ -84,9 +85,9 @@ end
 
 function clean_method_path(m::Method)
     path = String(m.file)
-    if !isabspath(path) 
+    if !isabspath(path)
         path = Base.find_source_file(path)
-        if path == nothing
+        if path === nothing
             path = ""
         end
     end
@@ -106,8 +107,10 @@ function cache_methods(f, mod = nothing, exported = false)
     catch err
         return ms
     end
+    ind_of_method_w_kws = Int[] # stores the index of methods with kws.
+    i = 1
     for m in methods0
-        if mod === nothing || mod === m[3].module || (exported && issubmodof(m[3].module, mod))
+        if mod === nothing || mod === m[3].module
             if true # Get return types? setting to false is costly
                 ty = Any
             elseif isdefined(m[3], :generator) && !Base.may_invoke_generator(m[3], types, m[2])
@@ -128,10 +131,24 @@ function cache_methods(f, mod = nothing, exported = false)
                 push!(MS.sig, argnames[i] => FakeTypeName(sig.parameters[i]))
             end
             kws = getkws(m[3])
+            if !isempty(kws)
+                push!(ind_of_method_w_kws, i)
+            end
             for kw in kws
                 push!(MS.kws, kw)
             end
             push!(ms, MS)
+            i += 1
+        end
+    end
+    # Go back and add kws to methods defined in the same place as others with kws.
+    for i in ind_of_method_w_kws
+        for j = 1:length(ms) # only need to go up to `i`?
+            if ms[j].file == ms[i].file && ms[j].line == ms[i].line && isempty(ms[j].kws)
+                for kw in ms[i].kws
+                    push!(ms[j].kws, kw)
+                end
+            end
         end
     end
     return ms
@@ -141,7 +158,7 @@ getargnames(m::Method) = Base.method_argnames(m)
 @static if length(first(methods(Base.kwarg_decl)).sig.parameters) == 2
     getkws = Base.kwarg_decl
 else
-    function getkws(m::Method) 
+    function getkws(m::Method)
         sig = Base.unwrap_unionall(m.sig)
         length(sig.parameters) == 0 && return []
         sig.parameters[1] isa Union && return []
@@ -149,7 +166,7 @@ else
         fname = Base.unwrap_unionall(sig.parameters[1]).name
         if isdefined(fname.mt, :kwsorter)
             Base.kwarg_decl(m, typeof(fname.mt.kwsorter))
-        else 
+        else
             []
         end
     end
@@ -174,76 +191,143 @@ function apply_to_everything(f, m = nothing, visited = Base.IdSet{Module}())
 end
 
 
-function cache_module(m::Module, mname::VarRef = VarRef(m), pkg_deps = Symbol[], isexported = true)
-    allnames = names(m, all = true, imported = true)
-    exportednames = filter(n->isdefined(m, n),names(m))
-    cache = ModuleStore(mname, Dict{Symbol,Any}(), _doc(m), isexported, exportednames, Symbol[])
-    for name in allnames
-        !isdefined(m, name) && continue
-        x = getfield(m, name)
-        vname = VarRef(mname, name)
-        if x isa Module
-            name == :Main && continue
-            if x == m
-                cache[name] = VarRef(x)
-            elseif parentmodule(x) == m
-                cache[name] = cache_module(x, VarRef(mname, name), pkg_deps, name in exportednames)
-            else
-                cache[name] = VarRef(x)
+
+function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
+    if m isa Module
+        push!(visited, m)
+        for s in names(m, all = true)
+            !isdefined(m, s) && continue
+            x = getfield(m, s)
+            f(m, s, x)
+            if x isa Module && !in(x, visited)
+                oneverything(f, x, visited)
             end
-        elseif x isa DataType
-            cache[name] = DataTypeStore(x, m, name in exportednames)
-        elseif x isa Function
-            cache[name] = FunctionStore(x, m, name in exportednames)
-        else
-            cache[name] = GenericStore(VarRef(VarRef(m), name), FakeTypeName(typeof(x)), _doc(x), name in exportednames)
+        end
+    else
+        for m in Base.loaded_modules_array()
+            in(m, visited) || oneverything(f, m, visited)
         end
     end
+end
 
-    apply_to_everything(
-        function (x)
-            x = Base.unwrap_unionall(x)
-            if x isa DataType && parentmodule(x) !== m && !Base.isvarargtype(x)
-                if supertype(x).name == Function.name && isdefined(x, :instance) && !haskey(cache, nameof(x.instance))
-                    f = x.instance
-                    ms = cache_methods(x.instance, m)
-                    if !isempty(ms)
-                        cache[nameof(x.instance)] = FunctionStore(VarRef(VarRef(m), nameof(x.instance)), ms, "", VarRef(VarRef(parentmodule(x)), nameof(x)), false)
-                    end
-                elseif !haskey(cache, nameof(x))
-                    ms = cache_methods(x, m)
-                    if !isempty(ms)
-                        cache[nameof(x)] = FunctionStore(VarRef(VarRef(m), nameof(x)), ms, "", VarRef(VarRef(parentmodule(x)), nameof(x)), false)
-                    end
+function allnames()
+    symbols = Base.IdSet{Symbol}()
+    oneverything((m, s, x)->push!(symbols, s))
+    return symbols
+end
+
+function allmodulenames()
+    symbols = Base.IdSet{Symbol}()
+    oneverything((m, s, x)->(x isa Module && push!(symbols, s)))
+    return symbols
+end
+
+function allthingswithmethods()
+    symbols = Base.IdSet{Any}()
+    oneverything(function (m, s, x)
+        if !Base.isvarargtype(x) && !isempty(methods(x))
+            push!(symbols, x)
+        end
+    end)
+    return symbols
+end
+
+function allmethods()
+    ms = Method[]
+    oneverything(function (m, s, x)
+        if !Base.isvarargtype(x) && !isempty(methods(x))
+            append!(ms, methods(x))
+        end
+    end)
+    return ms
+end
+
+usedby(outer, inner) = outer !== inner && isdefined(outer, nameof(inner)) && getproperty(outer, nameof(inner)) === inner && all(isdefined(outer, name) || !isdefined(inner, name) for name in names(inner))
+istoplevelmodule(m) = parentmodule(m) === m || parentmodule(m) === Main
+
+function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
+    push!(visited, m)
+    cache = ModuleStore(m)
+    for s in names(m, all = true)
+        !isdefined(m, s) && continue
+        x = getfield(m, s)
+        if x isa Module
+            if istoplevelmodule(x)
+                cache[s] = VarRef(x)
+            elseif m === parentmodule(x)
+                cache[s] = getmoduletree(x, amn, visited)
+            else
+                cache[s] = VarRef(x)
+            end
+        end
+    end
+    for n in amn
+        if n !== nameof(m) && isdefined(m, n)
+            x = getfield(m, n)
+            if x isa Module
+                if !istoplevelmodule(x) && !haskey(cache, n)
+                    cache[n] = VarRef(x)
                 end
-            elseif x isa Module
-                # `using`ed modules don't get listed 
-                if isdefined(m, nameof(x))
-                    if !(nameof(x) in cache.used_modules) && all(isdefined(m, name2) || !isdefined(x, name2) for name2 in names(x)) && x != m
-                        push!(cache.used_modules, nameof(x))
-                    end
-                    if !haskey(cache.vals, nameof(x))
-                        cache.vals[nameof(x)] = VarRef(x)
-                    end
+                if usedby(m, x)
+                    push!(cache.used_modules, n)
                 end
             end
-        end,
-    nothing)
-
-    for d in pkg_deps
-        if !haskey(cache, d) && isdefined(m, d) && getfield(m, d) isa Module
-            x = getfield(m, d)
-            cache[d] = VarRef(x)
         end
     end
     cache
 end
 
+function getenvtree(names = nothing)
+    amn = allmodulenames()
+    EnvStore(nameof(m) => getmoduletree(m, amn) for m in Base.loaded_modules_array() if names === nothing || nameof(m) in names)
+end
+
+function symbols(env, m = nothing, an = allnames(), visited = Base.IdSet{Module}())
+    if m isa Module
+        cache = _lookup(VarRef(m), env, true)
+        cache === nothing && return
+        push!(visited, m)
+        for s in an
+            !isdefined(m, s) && continue
+            x = getfield(m, s)
+            if x isa DataType
+                if parentmodule(x) === m
+                    cache[s] = DataTypeStore(x, m, s in names(m))
+                else
+                    cache[s] = FunctionStore(x, m, s in names(m))
+                end
+            elseif x isa Function
+                if parentmodule(x) === m
+                    cache[s] = FunctionStore(x, m, s in names(m))
+                elseif any(met.module == m for met in methods(x))
+                    cache[s] = FunctionStore(x, m, s in names(m))
+                else
+                    cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+                end
+            elseif x isa Module
+                if x === m
+                    cache[s] = VarRef(x)
+                elseif parentmodule(x) === m
+                    symbols(env, x, an, visited)
+                else
+                    cache[s] = VarRef(x)
+                end
+            else
+                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in names(m))
+            end
+        end
+    else
+        for m in Base.loaded_modules_array()
+            in(m, visited) || symbols(env, m, an, visited)
+        end
+    end
+end
+
+
 function load_core()
     c = Pkg.Types.Context()
-    cache = EnvStore()
-    cache[:Core] = cache_module(Core, VarRef(nothing, :Core))
-    cache[:Base] = cache_module(Base, VarRef(nothing, :Base))
+    cache = getenvtree([:Core,:Base])
+    symbols(cache)
 
     # Add special cases for built-ins
     let f = cache[:Base][:include]
@@ -251,9 +335,9 @@ function load_core()
     end
     append!(cache[:Base][:include].methods, cache_methods(Base.MainInclude.include, Base.MainInclude))
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
-    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module),_doc(Main), true)
+    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main), true)
     # Add built-ins
-    builtins = Symbol[nameof(getfield(Core,n).instance) for n in names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
+    builtins = Symbol[nameof(getfield(Core, n).instance) for n in names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
     cnames = names(Core)
     for f in builtins
         if !haskey(cache[:Core], f)
@@ -261,7 +345,7 @@ function load_core()
         end
         push!(cache[:Core][f].methods, MethodStore(Symbol(f), :none, "built-in", 0, [], Symbol[], FakeTypeName(Any)))
     end
-    haskey(cache[:Core], :_typevar) && push!(cache[:Core][:_typevar].methods, MethodStore(:_typevar, :Core, "built-in", 0, [:n=>FakeTypeName(Symbol), :lb=>FakeTypeName(Any), :ub=>FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
+    haskey(cache[:Core], :_typevar) && push!(cache[:Core][:_typevar].methods, MethodStore(:_typevar, :Core, "built-in", 0, [:n => FakeTypeName(Symbol), :lb => FakeTypeName(Any), :ub => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:_apply].methods, MethodStore(:_apply, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
     haskey(cache[:Core].vals, :_apply_iterate) && push!(cache[:Core][:_apply_iterate].methods, MethodStore(:_apply_iterate, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:_apply_latest].methods, MethodStore(:_apply_latest, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
@@ -290,14 +374,14 @@ function load_core()
     push!(cache[:Core][:typeof].methods, MethodStore(:typeof, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Type)))
 
     push!(cache[:Core][:getproperty].methods, MethodStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:setproperty!].methods, MethodStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[],FakeTypeName(Any)))
+    push!(cache[:Core][:setproperty!].methods, MethodStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
 
     cache[:Core][:ccall] = FunctionStore(VarRef(VarRef(Core), :ccall),
         MethodStore[
             MethodStore(:ccall, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)) # General method - should be fixed
         ],
-        "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.", 
-        VarRef(VarRef(Core), :ccall), 
+        "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.",
+        VarRef(VarRef(Core), :ccall),
         true)
     cache[:Core][Symbol("@__doc__")] = FunctionStore(VarRef(VarRef(Core), Symbol("@__doc__")), cache_methods(getfield(Core, Symbol("@__doc__"))), "", VarRef(VarRef(Core), Symbol("@__doc__")), true)
     # Accounts for the dd situation where Base.rand only has methods from Random which doesn't appear to be explicitly used.
@@ -305,42 +389,8 @@ function load_core()
     return cache
 end
 
-function cache_package(c::Pkg.Types.Context, uuid, depot::Dict, conn)
-    uuid in keys(depot) && return
-    isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
-    
-    pe = frommanifest(c, uuid)
-    pe_name = packagename(c, uuid)
-    pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
 
-    if pid in keys(Base.loaded_modules)
-        conn!==nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")
-        LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
-        m = getfield(LoadingBay, Symbol(pe_name))
-    else
-        m = try
-            conn!==nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
-            LoadingBay.eval(:(import $(Symbol(pe_name))))
-            conn!==nothing && println(conn, "STOPLOAD;$pe_name")
-            m = getfield(LoadingBay, Symbol(pe_name))
-        catch e
-            depot[uuid] = Package(pe_name, ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict(), "Failed to load package.", false, Symbol[], Symbol[]), version(pe), uuid, sha_pkg(pe))
-            return
-        end
-    end
-    depot[uuid] = Package(pe_name, cache_module(m, VarRef(m), Symbol.(collect(keys(deps(pe))))), version(pe), uuid, sha_pkg(pe))
-
-    pe_path = pathof(m) isa String && !isempty(pathof(m)) ? joinpath(dirname(pathof(m)), "..") : nothing
-
-    # Dependencies
-    for pkg in deps(pe)
-        cache_package(c, packageuuid(pkg), depot, conn)
-    end
-
-    return
-end
-
-function collect_extended_methods(depot::Dict, extendeds = Dict{VarRef,Vector{VarRef}}())
+function collect_extended_methods(depot::EnvStore, extendeds = Dict{VarRef,Vector{VarRef}}())
     for m in depot
         collect_extended_methods(m[2], extendeds, m[2].name)
     end
@@ -348,7 +398,7 @@ function collect_extended_methods(depot::Dict, extendeds = Dict{VarRef,Vector{Va
 end
 
 function collect_extended_methods(mod::ModuleStore, extendeds, mname)
-    for (n,v) in mod.vals
+    for (n, v) in mod.vals
         if (v isa FunctionStore) && v.extends != v.name
             haskey(extendeds, v.extends) ? push!(extendeds[v.extends], mname) : (extendeds[v.extends] = VarRef[v.extends.parent, mname])
         elseif v isa ModuleStore
