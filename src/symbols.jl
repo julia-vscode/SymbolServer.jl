@@ -112,7 +112,7 @@ function cache_methods(f, mod = nothing, exported = false)
     for m in methods0
         if mod === nothing || mod === m[3].module
             # if true # Get return types? setting to false is costly
-                ty = Any
+            ty = Any
             # elseif isdefined(m[3], :generator) && !Base.may_invoke_generator(m[3], types, m[2])
             #     ty = Any
             # else
