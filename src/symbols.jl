@@ -100,7 +100,7 @@ function cache_methods(f, mod = nothing, exported = false)
     end
     types = Tuple
     world = typemax(UInt)
-    params = Core.Compiler.Params(world)
+
     ms = MethodStore[]
     methods0 = try
         Base._methods(f, types, -1, world)
@@ -111,18 +111,19 @@ function cache_methods(f, mod = nothing, exported = false)
     i = 1
     for m in methods0
         if mod === nothing || mod === m[3].module
-            if true # Get return types? setting to false is costly
+            # if true # Get return types? setting to false is costly
                 ty = Any
-            elseif isdefined(m[3], :generator) && !Base.may_invoke_generator(m[3], types, m[2])
-                ty = Any
-            else
-                try
-                    ty = Core.Compiler.typeinf_type(m[3], m[1], m[2], params)
-                catch e
-                    ty = nothing
-                end
-                ty === nothing && (ty = Any)
-            end
+            # elseif isdefined(m[3], :generator) && !Base.may_invoke_generator(m[3], types, m[2])
+            #     ty = Any
+            # else
+            #     try
+            #         params = Core.Compiler.Params(world)
+            #         ty = Core.Compiler.typeinf_type(m[3], m[1], m[2], params)
+            #     catch e
+            #         ty = nothing
+            #     end
+            #     ty === nothing && (ty = Any)
+            # end
             MS = MethodStore(m[3].name, nameof(m[3].module), clean_method_path(m[3]), m[3].line, [], Symbol[], FakeTypeName(ty))
             # Get signature
             sig = Base.unwrap_unionall(m[1])
