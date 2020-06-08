@@ -316,6 +316,7 @@ function Base.print(io::IO, m::MethodStore)
         i != length(m.sig) && print(io, ", ")
     end
     print(io, ")")
+    print(io, " in ", m.mod, " at ", normpath(m.file), ':', m.line)
 end
 
 function Base.print(io::IO, t::DataTypeStore)
