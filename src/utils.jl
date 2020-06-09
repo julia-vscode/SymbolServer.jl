@@ -298,8 +298,6 @@ function issubmodof(m::Module, M::Module)
     end
 end
 
-
-
 function Base.print(io::IO, f::FunctionStore)
     println(io, f.name, " is a Function.")
     nm = length(f.methods)
@@ -309,6 +307,8 @@ function Base.print(io::IO, f::FunctionStore)
         println(io, f.methods[i])
     end
 end
+
+const JULIA_DIR = normpath(joinpath(Sys.BINDIR, Base.DATAROOTDIR, "julia"))
 
 function Base.print(io::IO, m::MethodStore)
     print(io, m.name, "(")
@@ -320,7 +320,8 @@ function Base.print(io::IO, m::MethodStore)
         i != length(m.sig) && print(io, ", ")
     end
     print(io, ")")
-    print(io, " in ", m.mod, " at ", normpath(m.file), ':', m.line)
+    path = replace(m.file, JULIA_DIR => "")
+    print(io, " in ", m.mod, " at ", path, ':', m.line)
 end
 
 function Base.print(io::IO, t::DataTypeStore)

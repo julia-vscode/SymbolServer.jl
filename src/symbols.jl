@@ -91,7 +91,7 @@ function clean_method_path(m::Method)
             path = ""
         end
     end
-    return path
+    return normpath(path)
 end
 
 function cache_methods(f, mod = nothing, exported = false)
