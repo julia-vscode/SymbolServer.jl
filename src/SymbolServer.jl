@@ -28,7 +28,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     server_script = joinpath(@__DIR__, "server.jl")
 
     env_to_use = copy(ENV)
-    ENV["JULIA_REVISE"] = "manual" # Try to make sure Revise isn't enabled.
+    env_to_use["JULIA_REVISE"] = "manual" # Try to make sure Revise isn't enabled.
 
     if ssi.depot_path == ""
         delete!(env_to_use, "JULIA_DEPOT_PATH")
