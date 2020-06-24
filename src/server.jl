@@ -135,7 +135,6 @@ env_symbols = getenvtree()
 
 # Populate the above with symbols, skipping modules that don't need caching.
 # symbols (env_symbols)
-an = allnames()
 visited = Base.IdSet{Module}([Base, Core]) # don't need to cache these each time...
 for (pid, m) in Base.loaded_modules
     if pid.uuid !== nothing && is_stdlib(pid.uuid) &&
@@ -146,9 +145,7 @@ for (pid, m) in Base.loaded_modules
     end
 end
 
-for m in Base.loaded_modules_array()
-    in(m, visited) || symbols(env_symbols, m, an, visited)
-end
+symbols(env_symbols, nothing, SymbolServer.getallns(), visited)
 
 # Wrap the `ModuleStore`s as `Package`s.
 for (pkg_name, cache) in env_symbols
