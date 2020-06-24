@@ -14,7 +14,7 @@ struct FakeTypeName
     parameters::Vector{Any}
 end
 
-function FakeTypeName(x; justname = false)
+function FakeTypeName(@nospecialize(x); justname = false)
     if x isa DataType
         xname = x.name
         xnamename = xname.name
@@ -54,10 +54,10 @@ struct FakeUnionAll
 end
 FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname = true))
 
-function _parameter(p::T) where T
+function _parameter(@nospecialize(p))
     if p isa Union{Int,Symbol,Bool,Char}
         p
-    elseif !(p isa Type) && isbitstype(T)
+    elseif !(p isa Type) && isbitstype(typeof(p))
         0
     elseif p isa Tuple
         _parameter.(p)
