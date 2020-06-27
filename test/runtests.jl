@@ -40,9 +40,18 @@ end
     env = SymbolServer.getenvtree([:Base, :Core])
     SymbolServer.symbols(env)
     r = missingsymbols(Core, env[:Core], env)
-    @test length.(r) == (0,0)
+    @test length.(r) == (0, 0)
     r = missingsymbols(Base, env[:Base], env)
-    @test length.(r) == (0,0)
+    @test length.(r) == (0, 0)
+
+    @testset "Builtins have appropriate methods" begin
+        for n in names(Core, all = true)
+            if isdefined(Core, n) && (x = getfield(Core, n)) isa Core.Builtin && haskey(SymbolServer.stdlibs[:Core], n)
+                @test !isempty(SymbolServer.stdlibs[:Core][n].methods)
+                @test !isempty(first(SymbolServer.stdlibs[:Core][n].methods).sig)
+            end
+        end
+    end
 
     mktempdir() do path
         cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
