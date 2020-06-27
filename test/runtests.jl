@@ -39,11 +39,11 @@ end
 # Check that we don't have any VarRefs that point to themselves or to nothing.
 function check_varrefs(env, m = nothing)
     if m === nothing
-        for (n,m) in env
+        for (n, m) in env
             check_varrefs(env, m)
         end
     else
-        for (s,x) in m.vals
+        for (s, x) in m.vals
             if x isa SymbolServer.VarRef && x.parent !== nothing
                 x0 = SymbolServer._lookup(x.parent, env, true)
                 @test x0 !== nothing
