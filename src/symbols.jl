@@ -60,7 +60,7 @@ function DataTypeStore(@nospecialize(t::DataType), parent_mod, exported)
     types = map(t.types) do p
         FakeTypeName(p)
     end
-    DataTypeStore(FakeTypeName(t), FakeTypeName(t.super), parameters, types, t.isconcretetype && fieldcount(t) > 0 ? collect(fieldnames(t)) : Symbol[], cache_methods(t, parent_mod, exported), _doc(t), exported)
+    DataTypeStore(FakeTypeName(t), FakeTypeName(t.super), parameters, types, t.isconcretetype && fieldcount(t) > 0 ? collect(fieldnames(t)) : Symbol[], [], _doc(t), exported)
 end
 
 struct FunctionStore <: SymStore
@@ -72,7 +72,11 @@ struct FunctionStore <: SymStore
 end
 
 function FunctionStore(@nospecialize(f), parent_mod, exported)
-    FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), cache_methods(f, parent_mod, exported), _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+    if f isa Core.IntrinsicFunction
+        FunctionStore(VarRef(VarRef(Core.Intrinsics), nameof(f)), [], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+    else
+        FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), [], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+    end
 end
 
 struct GenericStore <: SymStore
@@ -94,62 +98,78 @@ function clean_method_path(m::Method)
     return normpath(path)
 end
 
-function cache_methods(@nospecialize(f), mod = nothing, exported = false)
+const _global_method_cache = IdDict{Any,Vector{Any}}()
+function methodinfo(@nospecialize(f); types=Tuple, world=typemax(UInt))
+    key = (f, types, world)
+    cached = get(_global_method_cache, key, nothing)
+    if cached === nothing
+        cached = Base._methods(f, types, -1, world)
+        _global_method_cache[key] = cached
+    end
+    return cached
+end
+
+function methodlist(@nospecialize(f))
+    ms = methodinfo(f)
+    Method[x[3]::Method for x in ms]
+end
+
+function cache_methods(@nospecialize(f), env)
     if isa(f, Core.Builtin)
         return MethodStore[]
     end
     types = Tuple
     world = typemax(UInt)
-
-    ms = MethodStore[]
+    ms = Tuple{Module,MethodStore}[]
     methods0 = try
-        Base._methods(f, types, -1, world)
+        methodinfo(f; types=types, world=world)
     catch err
         return ms
     end
     ind_of_method_w_kws = Int[] # stores the index of methods with kws.
     i = 1
     for m in methods0
-        if mod === nothing || mod === m[3].module
-            # if true # Get return types? setting to false is costly
-            ty = Any
-            # elseif isdefined(m[3], :generator) && !Base.may_invoke_generator(m[3], types, m[2])
-            #     ty = Any
-            # else
-            #     try
-            #         params = Core.Compiler.Params(world)
-            #         ty = Core.Compiler.typeinf_type(m[3], m[1], m[2], params)
-            #     catch e
-            #         ty = nothing
-            #     end
-            #     ty === nothing && (ty = Any)
-            # end
-            MS = MethodStore(m[3].name, nameof(m[3].module), clean_method_path(m[3]), m[3].line, [], Symbol[], FakeTypeName(ty))
-            # Get signature
-            sig = Base.unwrap_unionall(m[1])
-            argnames = getargnames(m[3])
-            for i = 2:m[3].nargs
-                push!(MS.sig, argnames[i] => FakeTypeName(sig.parameters[i]))
-            end
-            kws = getkws(m[3])
-            if !isempty(kws)
-                push!(ind_of_method_w_kws, i)
-            end
-            for kw in kws
-                push!(MS.kws, kw)
-            end
-            push!(ms, MS)
-            i += 1
+        MS = MethodStore(m[3].name, nameof(m[3].module), clean_method_path(m[3]), m[3].line, [], Symbol[], FakeTypeName(Any))
+        # Get signature
+        sig = Base.unwrap_unionall(m[1])
+        argnames = getargnames(m[3])
+        for i = 2:m[3].nargs
+            push!(MS.sig, argnames[i] => FakeTypeName(sig.parameters[i]))
         end
+        kws = getkws(m[3])
+        if !isempty(kws)
+            push!(ind_of_method_w_kws, i)
+        end
+        for kw in kws
+            push!(MS.kws, kw)
+        end
+        push!(ms, (m[3].module, MS))
+        i += 1
     end
     # Go back and add kws to methods defined in the same place as others with kws.
     for i in ind_of_method_w_kws
         for j = 1:length(ms) # only need to go up to `i`?
-            if ms[j].file == ms[i].file && ms[j].line == ms[i].line && isempty(ms[j].kws)
-                for kw in ms[i].kws
-                    push!(ms[j].kws, kw)
+            if ms[j][2].file == ms[i][2].file && ms[j][2].line == ms[i][2].line && isempty(ms[j][2].kws)
+                for kw in ms[i][2].kws
+                    push!(ms[j][2].kws, kw)
                 end
             end
+        end
+    end
+
+    func_vr = VarRef(VarRef(parentmodule(f)), nameof(f))
+    for i = 1:length(ms)
+        mvr = VarRef(ms[i][1])
+        modstore = _lookup(mvr, env)
+        if modstore !== nothing
+            if !haskey(modstore, ms[i][2].name)
+                modstore[ms[i][2].name] = FunctionStore(VarRef(mvr, nameof(f)), MethodStore[ms[i][2]], "", func_vr, false)
+            elseif !(modstore[ms[i][2].name] isa DataTypeStore || modstore[ms[i][2].name] isa FunctionStore)
+                modstore[ms[i][2].name] = FunctionStore(VarRef(mvr, nameof(f)), MethodStore[ms[i][2]], "", func_vr, false)
+            else
+                push!(modstore[ms[i][2].name].methods, ms[i][2])
+            end
+        else
         end
     end
     return ms
@@ -173,10 +193,10 @@ else
     end
 end
 
-function apply_to_everything(f, m = nothing, visited = Base.IdSet{Module}())
+function apply_to_everything(f, m=nothing, visited=Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
-        for s in names(m, all = true)
+        for s in names(m, all=true, imported=true)
             (!isdefined(m, s) || s == nameof(m)) && continue
             x = getfield(m, s)
             f(x)
@@ -193,13 +213,14 @@ end
 
 
 
-function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
+function oneverything(f, m=nothing, visited=Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
-        for s in names(m, all = true)
+        state = nothing
+        for s in names(m, all=true)
             !isdefined(m, s) && continue
             x = getfield(m, s)
-            f(m, s, x)
+            state = f(m, s, x, state)
             if x isa Module && !in(x, visited)
                 oneverything(f, x, visited)
             end
@@ -211,34 +232,50 @@ function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
     end
 end
 
-function allnames()
-    symbols = Base.IdSet{Symbol}()
-    oneverything((m, s, x)->push!(symbols, s))
-    return symbols
+const _global_symbol_cache_by_mod = IdDict{Module,Base.IdSet{Symbol}}()
+function build_namecache(m, s, @nospecialize(x), state::Union{Base.IdSet{Symbol},Nothing}=nothing)
+    if state === nothing
+        state = get(_global_symbol_cache_by_mod, m, nothing)
+        if state === nothing
+            state = _global_symbol_cache_by_mod[m] = Base.IdSet{Symbol}()
+        end
+    end
+    push!(state, s)
+end
+
+function getnames(m::Module)
+    cache = get(_global_symbol_cache_by_mod, m, nothing)
+    if cache === nothing
+        oneverything(build_namecache, m)
+        cache = _global_symbol_cache_by_mod[m]
+    end
+    return cache
 end
 
 function allmodulenames()
     symbols = Base.IdSet{Symbol}()
-    oneverything((m, s, x)->(x isa Module && push!(symbols, s)))
+    oneverything((m, s, x, state)->(x isa Module && push!(symbols, s); return state))
     return symbols
 end
 
 function allthingswithmethods()
     symbols = Base.IdSet{Any}()
-    oneverything(function (m, s, x)
-        if !Base.isvarargtype(x) && !isempty(methods(x))
+    oneverything(function (m, s, x, state)
+        if !Base.isvarargtype(x) && !isempty(methodlist(x))
             push!(symbols, x)
         end
+        return state
     end)
     return symbols
 end
 
 function allmethods()
     ms = Method[]
-    oneverything(function (m, s, x)
-        if !Base.isvarargtype(x) && !isempty(methods(x))
-            append!(ms, methods(x))
+    oneverything(function (m, s, x, state)
+        if !Base.isvarargtype(x) && !isempty(methodlist(x))
+            append!(ms, methodlist(x))
         end
+        return state
     end)
     return ms
 end
@@ -246,10 +283,10 @@ end
 usedby(outer, inner) = outer !== inner && isdefined(outer, nameof(inner)) && getproperty(outer, nameof(inner)) === inner && all(isdefined(outer, name) || !isdefined(inner, name) for name in names(inner))
 istoplevelmodule(m) = parentmodule(m) === m || parentmodule(m) === Main
 
-function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
+function getmoduletree(m::Module, amn, visited=Base.IdSet{Module}())
     push!(visited, m)
     cache = ModuleStore(m)
-    for s in names(m, all = true)
+    for s in names(m, all=true, imported=true)
         !isdefined(m, s) && continue
         x = getfield(m, s)
         if x isa Module
@@ -278,48 +315,83 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     cache
 end
 
-function getenvtree(names = nothing)
+function getenvtree(names=nothing)
     amn = allmodulenames()
     EnvStore(nameof(m) => getmoduletree(m, amn) for m in Base.loaded_modules_array() if names === nothing || nameof(m) in names)
 end
 
-function symbols(env, m = nothing, an = allnames(), visited = Base.IdSet{Module}())
+function symbols(env::EnvStore, m::Union{Module,Nothing}=nothing, allnames::Base.IdSet{Symbol}=getallns(), visited=Base.IdSet{Module}())
     if m isa Module
         cache = _lookup(VarRef(m), env, true)
         cache === nothing && return
         push!(visited, m)
-        for s in an
+        internalnames, othernames = split_module_names(m, allnames)
+        for s in internalnames
             !isdefined(m, s) && continue
             x = getfield(m, s)
             if x isa DataType
                 if parentmodule(x) === m
-                    cache[s] = DataTypeStore(x, m, s in names(m))
+                    cache[s] = DataTypeStore(x, m, s in getnames(m))
+                    cache_methods(x, env)
+                elseif nameof(x) !== s
+                    # This needs some finessing. 
+                    cache[s] = DataTypeStore(x, m, s in getnames(m))
+                    cache_methods(x, env)
                 else
-                    cache[s] = FunctionStore(x, m, s in names(m))
+                    # These are imported variables that are reexported.
+                    cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
                 end
             elseif x isa Function
-                if parentmodule(x) === m
-                    cache[s] = FunctionStore(x, m, s in names(m))
-                elseif any(met.module == m for met in methods(x))
-                    cache[s] = FunctionStore(x, m, s in names(m))
+                if parentmodule(x) === m || (x isa Core.IntrinsicFunction && m === Core.Intrinsics)
+                    cache[s] = FunctionStore(x, m, s in getnames(m))
+                    cache_methods(x, env)
+                elseif !haskey(cache, s)
+                    # This will be replaced at a later point by a FunctionStore if methods for `x` are defined within `m`.
+                    if x isa Core.IntrinsicFunction
+                        cache[s] = VarRef(VarRef(Core.Intrinsics), nameof(x))
+                    else
+                        cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+                    end
                 else
-                    cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+                    # These are imported variables that are reexported.
+                    if x isa Core.IntrinsicFunction
+                        cache[s] = VarRef(VarRef(Core.Intrinsics), nameof(x))
+                    else
+                        cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+                    end
                 end
             elseif x isa Module
                 if x === m
                     cache[s] = VarRef(x)
                 elseif parentmodule(x) === m
-                    symbols(env, x, an, visited)
+                    symbols(env, x, allnames, visited)
                 else
                     cache[s] = VarRef(x)
                 end
             else
-                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in names(m))
+                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
+            end
+        end
+        for s in othernames
+            x = getfield(m, s)
+            if x isa Function 
+                if x isa Core.IntrinsicFunction
+                    cache[s] = VarRef(VarRef(Core.Intrinsics), nameof(x))
+                else
+                    cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+                end
+            elseif x isa DataType
+                cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+            elseif x isa Module
+                cache[s] = VarRef(x)
+            else
+                # We'd like to have these as VarRef's but we don't know where they live.
+                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
             end
         end
     else
         for m in Base.loaded_modules_array()
-            in(m, visited) || symbols(env, m, an, visited)
+            in(m, visited) || symbols(env, m, allnames, visited)
         end
     end
 end
@@ -332,13 +404,13 @@ function load_core()
 
     # Add special cases for built-ins
     let f = cache[:Base][:include]
-        cache[:Base][:include] = FunctionStore(f.name, f.methods, f.doc, f.extends, true)
+        cache[:Base][:include] = FunctionStore(f.name, cache[:Base][:MainInclude][:include].methods, f.doc, f.extends, true)
     end
-    append!(cache[:Base][:include].methods, cache_methods(Base.MainInclude.include, Base.MainInclude))
+    # append!(cache[:Base][:include].methods, cache_methods(Base.MainInclude.include, cache))
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
     cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main), true)
     # Add built-ins
-    builtins = Symbol[nameof(getfield(Core, n).instance) for n in names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
+    builtins = Symbol[nameof(getfield(Core, n).instance) for n in names(Core, all=true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
     cnames = names(Core)
     for f in builtins
         if !haskey(cache[:Core], f)
@@ -375,7 +447,7 @@ function load_core()
 
     push!(cache[:Core][:getproperty].methods, MethodStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:setproperty!].methods, MethodStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
-
+    push!(cache[:Core][:setproperty!].methods, MethodStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     haskey(cache[:Core], :_abstracttype) && push!(cache[:Core][:_abstracttype].methods, MethodStore(:_abstracttype, :Core, "built-in", 0, [:m => FakeTypeName(Module), :x => FakeTypeName(Symbol), :p => FakeTypeName(Core.SimpleVector)], Symbol[], FakeTypeName(Any)))
     haskey(cache[:Core], :_primitivetype) && push!(cache[:Core][:_primitivetype].methods, MethodStore(:_primitivetype, :Core, "built-in", 0, [:m => FakeTypeName(Module), :x => FakeTypeName(Symbol), :p => FakeTypeName(Core.SimpleVector), :n => FakeTypeName(Core.Int)], Symbol[], FakeTypeName(Any)))
     haskey(cache[:Core], :_equiv_typedef) && push!(cache[:Core][:_equiv_typedef].methods, MethodStore(:_equiv_typedef, :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
@@ -399,14 +471,22 @@ function load_core()
         "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.",
         VarRef(VarRef(Core), :ccall),
         true)
-    cache[:Core][Symbol("@__doc__")] = FunctionStore(VarRef(VarRef(Core), Symbol("@__doc__")), cache_methods(getfield(Core, Symbol("@__doc__"))), "", VarRef(VarRef(Core), Symbol("@__doc__")), true)
+    cache[:Core][Symbol("@__doc__")] = FunctionStore(VarRef(VarRef(Core), Symbol("@__doc__")), [], "", VarRef(VarRef(Core), Symbol("@__doc__")), true)
+    cache_methods(getfield(Core, Symbol("@__doc__")), cache)
     # Accounts for the dd situation where Base.rand only has methods from Random which doesn't appear to be explicitly used.
-    append!(cache[:Base][:rand].methods, cache_methods(Base.rand, Base.loaded_modules[Base.PkgId(UUID("9a3f8284-a2c9-5f02-9a11-845980a1fd5c"), "Random")]))
+    # append!(cache[:Base][:rand].methods, cache_methods(Base.rand, cache))
+    for m in cache_methods(Base.rand, cache)
+        push!(cache[:Base][:rand].methods, m[2])
+    end
+
+    # Intrinsics
+    cache[:Core][:add_int] = VarRef(VarRef(VarRef(nothing, :Core), :Intrinsics), :add_int)
+    cache[:Core][:sle_int] = VarRef(VarRef(VarRef(nothing, :Core), :Intrinsics), :sle_int)
     return cache
 end
 
 
-function collect_extended_methods(depot::EnvStore, extendeds = Dict{VarRef,Vector{VarRef}}())
+function collect_extended_methods(depot::EnvStore, extendeds=Dict{VarRef,Vector{VarRef}}())
     for m in depot
         collect_extended_methods(m[2], extendeds, m[2].name)
     end
@@ -422,3 +502,29 @@ function collect_extended_methods(mod::ModuleStore, extendeds, mname)
         end
     end
 end
+
+getallns() = let allns = Base.IdSet{Symbol}(); SymbolServer.oneverything((m, s, x, state)->push!(allns, s)); allns end
+
+function split_module_names(m::Module, allns)
+    internal_names = getnames(m)
+    availablenames = Set{Symbol}([s for s in allns if isdefined(m, s)])
+    usinged_names = Set{Symbol}()
+    
+    for n in availablenames
+        if (n in internal_names)
+            pop!(availablenames, n)
+        end
+    end
+    for u in get_used_modules(m)
+        for n in names(u)
+            if n in availablenames
+                push!(usinged_names, pop!(availablenames, n))
+            end
+        end
+    end
+    internal_names, availablenames
+end
+
+get_all_modules() = let allms= Base.IdSet{Module}(); apply_to_everything(x-> if x isa Module push!(allms, x) end); allms end
+get_used_modules(M, allms = get_all_modules()) = [m for m in allms if usedby(M, m)]
+

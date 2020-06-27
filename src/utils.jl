@@ -261,6 +261,8 @@ function _lookup(vr::VarRef, depot::EnvStore, cont = false)
     end
 end
 
+maybe_lookup(x, env) = x isa VarRef ? _lookup(x, env, true) : x
+
 """
     maybe_getfield(k::Symbol , m::ModuleStore, server)
 

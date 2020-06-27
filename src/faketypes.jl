@@ -21,7 +21,12 @@ function FakeTypeName(@nospecialize(x); justname = false)
         if justname
             FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
         else
-            FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
+            # FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
+            ft = FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
+            for p in x.parameters
+                push!(ft.parameters, _parameter(p))
+            end
+            ft
         end
     elseif x isa Union
         FakeUnion(x)
