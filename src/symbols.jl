@@ -401,6 +401,7 @@ function load_core()
     c = Pkg.Types.Context()
     cache = getenvtree([:Core,:Base])
     symbols(cache)
+    cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
     # Add special cases for built-ins
     let f = cache[:Base][:include]
