@@ -515,7 +515,8 @@ function split_module_names(m::Module, allns)
             pop!(availablenames, n)
         end
     end
-    for u in get_used_modules(m)
+    allms = get_all_modules()
+    for u in get_used_modules(m, allms)
         for n in unsorted_names(u)
             if n in availablenames
                 push!(usinged_names, pop!(availablenames, n))
