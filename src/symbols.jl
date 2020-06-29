@@ -306,7 +306,7 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
                 if !istoplevelmodule(x) && !haskey(cache, n)
                     cache[n] = VarRef(x)
                 end
-                if usedby(m, x)
+                if x !== Main && usedby(m, x)
                     push!(cache.used_modules, n)
                 end
             end
