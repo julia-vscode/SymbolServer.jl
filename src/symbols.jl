@@ -16,7 +16,7 @@ struct ModuleStore <: SymStore
     used_modules::Vector{Symbol}
 end
 
-ModuleStore(m) = ModuleStore(VarRef(m), Dict{Symbol,Any}(), "", true, names(m), Symbol[])
+ModuleStore(m) = ModuleStore(VarRef(m), Dict{Symbol,Any}(), "", true, unsorted_names(m), Symbol[])
 Base.getindex(m::ModuleStore, k) = m.vals[k]
 Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
 Base.haskey(m::ModuleStore, k) = haskey(m.vals, k)
@@ -196,7 +196,7 @@ end
 function apply_to_everything(f, m = nothing, visited = Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
-        for s in names(m, all = true, imported = true)
+        for s in unsorted_names(m, all = true, imported = true)
             (!isdefined(m, s) || s == nameof(m)) && continue
             x = getfield(m, s)
             f(x)
@@ -217,7 +217,7 @@ function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
         state = nothing
-        for s in names(m, all = true)
+        for s in unsorted_names(m, all = true)
             !isdefined(m, s) && continue
             x = getfield(m, s)
             state = f(m, s, x, state)
@@ -280,13 +280,13 @@ function allmethods()
     return ms
 end
 
-usedby(outer, inner) = outer !== inner && isdefined(outer, nameof(inner)) && getproperty(outer, nameof(inner)) === inner && all(isdefined(outer, name) || !isdefined(inner, name) for name in names(inner))
+usedby(outer, inner) = outer !== inner && isdefined(outer, nameof(inner)) && getproperty(outer, nameof(inner)) === inner && all(isdefined(outer, name) || !isdefined(inner, name) for name in unsorted_names(inner))
 istoplevelmodule(m) = parentmodule(m) === m || parentmodule(m) === Main
 
 function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     push!(visited, m)
     cache = ModuleStore(m)
-    for s in names(m, all = true, imported = true)
+    for s in unsorted_names(m, all = true, imported = true)
         !isdefined(m, s) && continue
         x = getfield(m, s)
         if x isa Module
@@ -410,8 +410,8 @@ function load_core()
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
     cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main), true)
     # Add built-ins
-    builtins = Symbol[nameof(getfield(Core, n).instance) for n in names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
-    cnames = names(Core)
+    builtins = Symbol[nameof(getfield(Core, n).instance) for n in unsorted_names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
+    cnames = unsorted_names(Core)
     for f in builtins
         if !haskey(cache[:Core], f)
             cache[:Core][f] = FunctionStore(getfield(Core, Symbol(f)), Core, Symbol(f) in cnames)
@@ -515,8 +515,9 @@ function split_module_names(m::Module, allns)
             pop!(availablenames, n)
         end
     end
-    for u in get_used_modules(m)
-        for n in names(u)
+    allms = get_all_modules()
+    for u in get_used_modules(m, allms)
+        for n in unsorted_names(u)
             if n in availablenames
                 push!(usinged_names, pop!(availablenames, n))
             end
