@@ -79,6 +79,16 @@ end
         @test !isempty(SymbolServer.stdlibs[:Base][:rand].methods)
     end
 
+    @testset "check caching of UnionAlls" begin
+        for n in names(Base)
+            !isdefined(Base, n) && continue
+            x = getfield(Base, n)
+            if x isa UnionAll && Base.unwrap_unionall(x) isa DataType && parentmodule(Base.unwrap_unionall(x)) == Base
+                @test SymbolServer.stdlibs[:Base][n] isa SymbolServer.DataTypeStore
+            end
+        end
+    end
+
     mktempdir() do path
         cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
         cp(joinpath(@__DIR__, "testenv", "Manifest.toml"), joinpath(path, "Manifest.toml"))
@@ -110,9 +120,10 @@ end
         @info readdir(store_path)
 
         @test ret_status2 == :success
-        @test length(store2) == 6
+        @test length(store2) == 7
         @test haskey(store2, :Core)
         @test haskey(store2, :Base)
+        @test haskey(store2, :Main)
         @test haskey(store2, :Base64)
         @test haskey(store2, :IteratorInterfaceExtensions)
         @test haskey(store2, :Markdown)

@@ -53,14 +53,23 @@ struct DataTypeStore <: SymStore
     exported::Bool
 end
 
-function DataTypeStore(@nospecialize(t::DataType), parent_mod, exported)
-    parameters = map(t.parameters) do p
-        _parameter(p)
+function DataTypeStore(@nospecialize(t), parent_mod, exported)
+    ur_t = Base.unwrap_unionall(t)
+    parameters = if isdefined(ur_t, :parameters)
+        map(ur_t.parameters) do p
+            _parameter(p)
+        end
+    else
+        []
     end
-    types = map(t.types) do p
-        FakeTypeName(p)
+    types = if isdefined(ur_t, :types)
+        map(ur_t.types) do p
+            FakeTypeName(p)
+        end
+    else
+        []
     end
-    DataTypeStore(FakeTypeName(t), FakeTypeName(t.super), parameters, types, t.isconcretetype && fieldcount(t) > 0 ? collect(fieldnames(t)) : Symbol[], [], _doc(t), exported)
+    DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, ur_t.isconcretetype && fieldcount(ur_t) > 0 ? collect(fieldnames(ur_t)) : Symbol[], MethodStore[], _doc(t), exported)
 end
 
 struct FunctionStore <: SymStore
@@ -73,9 +82,9 @@ end
 
 function FunctionStore(@nospecialize(f), parent_mod, exported)
     if f isa Core.IntrinsicFunction
-        FunctionStore(VarRef(VarRef(Core.Intrinsics), nameof(f)), [], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+        FunctionStore(VarRef(VarRef(Core.Intrinsics), nameof(f)), MethodStore[], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
     else
-        FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), [], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+        FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), MethodStore[], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
     end
 end
 
@@ -303,7 +312,7 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
         if n !== nameof(m) && isdefined(m, n)
             x = getfield(m, n)
             if x isa Module
-                if !istoplevelmodule(x) && !haskey(cache, n)
+                if !haskey(cache, n)
                     cache[n] = VarRef(x)
                 end
                 if x !== Main && usedby(m, x)
@@ -329,8 +338,8 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
         for s in internalnames
             !isdefined(m, s) && continue
             x = getfield(m, s)
-            if x isa DataType
-                if parentmodule(x) === m
+            if Base.unwrap_unionall(x) isa DataType # Unions aren't handled here.
+                if parentmodule((x)) === m
                     cache[s] = DataTypeStore(x, m, s in getnames(m))
                     cache_methods(x, env)
                 elseif nameof(x) !== s
