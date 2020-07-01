@@ -123,7 +123,7 @@ function methodlist(@nospecialize(f))
     Method[x[3]::Method for x in ms]
 end
 
-function cache_methods(@nospecialize(f), env)
+function cache_methods(@nospecialize(f), name, env)
     if isa(f, Core.Builtin)
         return MethodStore[]
     end
@@ -166,17 +166,17 @@ function cache_methods(@nospecialize(f), env)
         end
     end
 
-    func_vr = VarRef(VarRef(parentmodule(f)), nameof(f))
+    func_vr = VarRef(VarRef(parentmodule(f)), name)
     for i = 1:length(ms)
         mvr = VarRef(ms[i][1])
         modstore = _lookup(mvr, env)
         if modstore !== nothing
-            if !haskey(modstore, ms[i][2].name)
-                modstore[ms[i][2].name] = FunctionStore(VarRef(mvr, nameof(f)), MethodStore[ms[i][2]], "", func_vr, false)
-            elseif !(modstore[ms[i][2].name] isa DataTypeStore || modstore[ms[i][2].name] isa FunctionStore)
-                modstore[ms[i][2].name] = FunctionStore(VarRef(mvr, nameof(f)), MethodStore[ms[i][2]], "", func_vr, false)
+            if !haskey(modstore, name)
+                modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[ms[i][2]], "", func_vr, false)
+            elseif !(modstore[name] isa DataTypeStore || modstore[name] isa FunctionStore)
+                modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[ms[i][2]], "", func_vr, false)
             else
-                push!(modstore[ms[i][2].name].methods, ms[i][2])
+                push!(modstore[name].methods, ms[i][2])
             end
         else
         end
@@ -341,11 +341,11 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
             if Base.unwrap_unionall(x) isa DataType # Unions aren't handled here.
                 if parentmodule((x)) === m
                     cache[s] = DataTypeStore(x, m, s in getnames(m))
-                    cache_methods(x, env)
+                    cache_methods(x, s, env)
                 elseif nameof(x) !== s
                     # This needs some finessing.
                     cache[s] = DataTypeStore(x, m, s in getnames(m))
-                    cache_methods(x, env)
+                    cache_methods(x, s, env)
                 else
                     # These are imported variables that are reexported.
                     cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
@@ -353,7 +353,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
             elseif x isa Function
                 if parentmodule(x) === m || (x isa Core.IntrinsicFunction && m === Core.Intrinsics)
                     cache[s] = FunctionStore(x, m, s in getnames(m))
-                    cache_methods(x, env)
+                    cache_methods(x, s, env)
                 elseif !haskey(cache, s)
                     # This will be replaced at a later point by a FunctionStore if methods for `x` are defined within `m`.
                     if x isa Core.IntrinsicFunction
@@ -420,7 +420,7 @@ function load_core()
     let f = cache[:Base][:include]
         cache[:Base][:include] = FunctionStore(f.name, cache[:Base][:MainInclude][:include].methods, f.doc, f.extends, true)
     end
-    # append!(cache[:Base][:include].methods, cache_methods(Base.MainInclude.include, cache))
+
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
     cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main), true)
     # Add built-ins
@@ -487,10 +487,10 @@ function load_core()
         true)
     push!(cache[:Core].exportednames, :ccall)
     cache[:Core][Symbol("@__doc__")] = FunctionStore(VarRef(VarRef(Core), Symbol("@__doc__")), [], "", VarRef(VarRef(Core), Symbol("@__doc__")), true)
-    cache_methods(getfield(Core, Symbol("@__doc__")), cache)
+    cache_methods(getfield(Core, Symbol("@__doc__")), Symbol("@__doc__"), cache)
     # Accounts for the dd situation where Base.rand only has methods from Random which doesn't appear to be explicitly used.
     # append!(cache[:Base][:rand].methods, cache_methods(Base.rand, cache))
-    for m in cache_methods(Base.rand, cache)
+    for m in cache_methods(Base.rand, :rand, cache)
         push!(cache[:Base][:rand].methods, m[2])
     end
 
