@@ -412,6 +412,10 @@ function load_core()
     symbols(cache)
     cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
+    # This is wrong. As per the docs the Base.include each module should have it's own
+    # version.
+    push!(cache[:Base].exportednames, :include) 
+
     # Add special cases for built-ins
     let f = cache[:Base][:include]
         cache[:Base][:include] = FunctionStore(f.name, cache[:Base][:MainInclude][:include].methods, f.doc, f.extends, true)
