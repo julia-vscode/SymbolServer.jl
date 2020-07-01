@@ -520,10 +520,17 @@ end
 
 getallns() = let allns = Base.IdSet{Symbol}(); SymbolServer.oneverything((m, s, x, state)->push!(allns, s)); allns end
 
+"""
+    split_module_names(m::Module, allns)
+
+Return two lists of names accessible from calling getfield(m, somename)`. The first
+contains those symbols returned by `Base.names(m, all = true)`. The second contains
+all others, including imported symbols and those introduced by the `using` of modules.
+"""
 function split_module_names(m::Module, allns)
     internal_names = getnames(m)
     availablenames = Set{Symbol}([s for s in allns if isdefined(m, s)])
-    usinged_names = Set{Symbol}()
+    # usinged_names = Set{Symbol}()
 
     for n in availablenames
         if (n in internal_names)
@@ -534,7 +541,8 @@ function split_module_names(m::Module, allns)
     for u in get_used_modules(m, allms)
         for n in unsorted_names(u)
             if n in availablenames
-                push!(usinged_names, pop!(availablenames, n))
+                pop!(availablenames, n)
+                # push!(usinged_names, pop!(availablenames, n))
             end
         end
     end
