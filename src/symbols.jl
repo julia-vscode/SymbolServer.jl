@@ -414,7 +414,7 @@ function load_core()
 
     # This is wrong. As per the docs the Base.include each module should have it's own
     # version.
-    push!(cache[:Base].exportednames, :include) 
+    push!(cache[:Base].exportednames, :include)
 
     # Add special cases for built-ins
     let f = cache[:Base][:include]
