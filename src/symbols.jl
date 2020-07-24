@@ -1,4 +1,4 @@
-using LibGit2
+using LibGit2, InteractiveUtils
 
 mutable struct Server
     storedir::String
@@ -95,16 +95,43 @@ struct GenericStore <: SymStore
     exported::Bool
 end
 
+# adapted from https://github.com/timholy/CodeTracking.jl/blob/afc73a957f5034cc7f02e084a91283c47882f92b/src/utils.jl#L87-L122
 
-function clean_method_path(m::Method)
-    path = String(m.file)
-    if !isabspath(path)
-        path = Base.find_source_file(path)
-        if path === nothing
-            path = ""
+"""
+    path = maybe_fix_path(path)
+
+Return a normalized, absolute path for a source file `path`.
+"""
+function maybe_fix_path(file)
+    if !isabspath(file)
+        # This may be a Base or Core method
+        newfile = Base.find_source_file(file)
+        if isa(newfile, AbstractString)
+            file = normpath(newfile)
         end
     end
-    return normpath(path)
+    return maybe_fixup_stdlib_path(file)
+end
+
+safe_isfile(x) = try isfile(x); catch; false end
+const BUILDBOT_STDLIB_PATH = dirname(abspath(joinpath(String((@which versioninfo()).file), "..", "..", "..")))
+replace_buildbot_stdlibpath(str::String) = replace(str, BUILDBOT_STDLIB_PATH => Sys.STDLIB)
+"""
+    path = maybe_fixup_stdlib_path(path::String)
+
+Return `path` corrected for julia issue [#26314](https://github.com/JuliaLang/julia/issues/26314) if applicable.
+Otherwise, return the input `path` unchanged.
+
+Due to the issue mentioned above, location info for methods defined one of Julia's standard libraries
+are, for non source Julia builds, given as absolute paths on the worker that built the `julia` executable.
+This function corrects such a path to instead refer to the local path on the users drive.
+"""
+function maybe_fixup_stdlib_path(path)
+    if !safe_isfile(path)
+        maybe_stdlib_path = replace_buildbot_stdlibpath(path)
+        safe_isfile(maybe_stdlib_path) && return maybe_stdlib_path
+    end
+    return path
 end
 
 const _global_method_cache = IdDict{Any,Vector{Any}}()
@@ -138,7 +165,8 @@ function cache_methods(@nospecialize(f), name, env)
     ind_of_method_w_kws = Int[] # stores the index of methods with kws.
     i = 1
     for m in methods0
-        MS = MethodStore(m[3].name, nameof(m[3].module), clean_method_path(m[3]), m[3].line, [], Symbol[], FakeTypeName(Any))
+        file = maybe_fix_path(String(m[3].file))
+        MS = MethodStore(m[3].name, nameof(m[3].module), file, m[3].line, [], Symbol[], FakeTypeName(Any))
         # Get signature
         sig = Base.unwrap_unionall(m[1])
         argnames = getargnames(m[3])
@@ -551,4 +579,3 @@ end
 
 get_all_modules() = let allms = Base.IdSet{Module}(); apply_to_everything(x->if x isa Module push!(allms, x) end); allms end
 get_used_modules(M, allms = get_all_modules()) = [m for m in allms if usedby(M, m)]
-
