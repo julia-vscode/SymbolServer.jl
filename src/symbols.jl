@@ -226,7 +226,7 @@ function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
         state = nothing
-        for s in unsorted_names(m, all = true)
+        for s in unsorted_names(m, all = true, imported = true)
             !isdefined(m, s) && continue
             x = getfield(m, s)
             state = f(m, s, x, state)
@@ -329,13 +329,32 @@ function getenvtree(names = nothing)
     EnvStore(nameof(m) => getmoduletree(m, amn) for m in Base.loaded_modules_array() if names === nothing || nameof(m) in names)
 end
 
+# faster and more correct split_module_names
+function all_names(m, pred = x -> true, symbols = Set(Symbol[]), seen = Set(Module[]))
+    push!(seen, m)
+    ns = unsorted_names(m; all = true, imported = true)
+    for n in ns
+        isdefined(m, n) || continue
+        Base.isdeprecated(m, n) && continue
+        val = getfield(m, n)
+        if pred(n)
+            if val isa Module && !(val in seen)
+                all_names(val, pred, symbols, seen)
+            end
+            push!(symbols, n)
+        end
+    end
+    symbols
+end
+
 function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Base.IdSet{Symbol} = getallns(), visited = Base.IdSet{Module}())
     if m isa Module
         cache = _lookup(VarRef(m), env, true)
         cache === nothing && return
         push!(visited, m)
-        internalnames, othernames = split_module_names(m, allnames)
-        for s in internalnames
+        ns = all_names(m, x -> isdefined(m, x))
+        # internalnames, othernames = split_module_names(m, allnames)
+        for s in ns
             !isdefined(m, s) && continue
             x = getfield(m, s)
             if Base.unwrap_unionall(x) isa DataType # Unions aren't handled here.
@@ -381,23 +400,23 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                 cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
             end
         end
-        for s in othernames
-            x = getfield(m, s)
-            if x isa Function
-                if x isa Core.IntrinsicFunction
-                    cache[s] = VarRef(VarRef(Core.Intrinsics), nameof(x))
-                else
-                    cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
-                end
-            elseif x isa DataType
-                cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
-            elseif x isa Module
-                cache[s] = VarRef(x)
-            else
-                # We'd like to have these as VarRef's but we don't know where they live.
-                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
-            end
-        end
+        # for s in othernames
+        #     x = getfield(m, s)
+        #     if x isa Function
+        #         if x isa Core.IntrinsicFunction
+        #             cache[s] = VarRef(VarRef(Core.Intrinsics), nameof(x))
+        #         else
+        #             cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+        #         end
+        #     elseif x isa DataType
+        #         cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
+        #     elseif x isa Module
+        #         cache[s] = VarRef(x)
+        #     else
+        #         # We'd like to have these as VarRef's but we don't know where they live.
+        #         cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
+        #     end
+        # end
     else
         for m in Base.loaded_modules_array()
             in(m, visited) || symbols(env, m, allnames, visited)
@@ -551,4 +570,3 @@ end
 
 get_all_modules() = let allms = Base.IdSet{Module}(); apply_to_everything(x->if x isa Module push!(allms, x) end); allms end
 get_used_modules(M, allms = get_all_modules()) = [m for m in allms if usedby(M, m)]
-
