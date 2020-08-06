@@ -330,17 +330,18 @@ function getenvtree(names = nothing)
 end
 
 # faster and more correct split_module_names
-function all_names(m, pred = x -> true, symbols = Set(Symbol[]), seen = Set(Module[]))
+all_names(m) = all_names(m, x -> isdefined(m, x))
+function all_names(m, pred, symbols = Set(Symbol[]), seen = Set(Module[]))
     push!(seen, m)
-    ns = unsorted_names(m; all = true, imported = true)
+    ns = unsorted_names(m; all = true, imported = false)
     for n in ns
         isdefined(m, n) || continue
         Base.isdeprecated(m, n) && continue
         val = getfield(m, n)
+        if val isa Module && !(val in seen)
+            all_names(val, pred, symbols, seen)
+        end
         if pred(n)
-            if val isa Module && !(val in seen)
-                all_names(val, pred, symbols, seen)
-            end
             push!(symbols, n)
         end
     end
@@ -352,7 +353,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
         cache = _lookup(VarRef(m), env, true)
         cache === nothing && return
         push!(visited, m)
-        ns = all_names(m, x -> isdefined(m, x))
+        ns = all_names(m)
         # internalnames, othernames = split_module_names(m, allnames)
         for s in ns
             !isdefined(m, s) && continue
