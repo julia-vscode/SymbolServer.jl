@@ -7,7 +7,7 @@ allns = SymbolServer.getallns()
 function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env)
     notfound = Symbol[]
     notfoundhidden = Symbol[]
-    for n in names(m, all = true)
+    for n in names(m, all=true)
         if isdefined(m, n) && !haskey(cache.vals, n)
             push!(notfound, n)
         end
@@ -37,7 +37,7 @@ function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env)
 end
 
 # Check that we don't have any VarRefs that point to themselves or to nothing.
-function check_varrefs(env, m = nothing)
+function check_varrefs(env, m=nothing)
     if m === nothing
         for (n, m) in env
             check_varrefs(env, m)
@@ -67,7 +67,7 @@ end
     end
 
     @testset "Builtins have appropriate methods" begin
-        for n in names(Core, all = true)
+        for n in names(Core, all=true)
             if isdefined(Core, n) && (x = getfield(Core, n)) isa Core.Builtin && haskey(SymbolServer.stdlibs[:Core], n)
                 @test !isempty(SymbolServer.stdlibs[:Core][n].methods)
                 @test !isempty(first(SymbolServer.stdlibs[:Core][n].methods).sig)
