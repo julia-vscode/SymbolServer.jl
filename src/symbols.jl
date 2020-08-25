@@ -382,7 +382,6 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
         cache === nothing && return
         push!(visited, m)
         ns = all_names(m)
-        # internalnames, othernames = split_module_names(m, allnames)
         for s in ns
             !isdefined(m, s) && continue
             x = getfield(m, s)
@@ -429,23 +428,6 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                 cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
             end
         end
-        # for s in othernames
-        #     x = getfield(m, s)
-        #     if x isa Function
-        #         if x isa Core.IntrinsicFunction
-        #             cache[s] = VarRef(VarRef(Core.Intrinsics), nameof(x))
-        #         else
-        #             cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
-        #         end
-        #     elseif x isa DataType
-        #         cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
-        #     elseif x isa Module
-        #         cache[s] = VarRef(x)
-        #     else
-        #         # We'd like to have these as VarRef's but we don't know where they live.
-        #         cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
-        #     end
-        # end
     else
         for m in Base.loaded_modules_array()
             in(m, visited) || symbols(env, m, allnames, visited)
