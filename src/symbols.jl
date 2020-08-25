@@ -1,4 +1,4 @@
-using LibGit2
+using LibGit2, InteractiveUtils
 
 mutable struct Server
     storedir::String
@@ -95,16 +95,43 @@ struct GenericStore <: SymStore
     exported::Bool
 end
 
+# adapted from https://github.com/timholy/CodeTracking.jl/blob/afc73a957f5034cc7f02e084a91283c47882f92b/src/utils.jl#L87-L122
 
-function clean_method_path(m::Method)
-    path = String(m.file)
-    if !isabspath(path)
-        path = Base.find_source_file(path)
-        if path === nothing
-            path = ""
+"""
+    path = maybe_fix_path(path)
+
+Return a normalized, absolute path for a source file `path`.
+"""
+function maybe_fix_path(file)
+    if !isabspath(file)
+        # This may be a Base or Core method
+        newfile = Base.find_source_file(file)
+        if isa(newfile, AbstractString)
+            file = normpath(newfile)
         end
     end
-    return normpath(path)
+    return maybe_fixup_stdlib_path(file)
+end
+
+safe_isfile(x) = try isfile(x); catch; false end
+const BUILDBOT_STDLIB_PATH = dirname(abspath(joinpath(String((@which versioninfo()).file), "..", "..", "..")))
+replace_buildbot_stdlibpath(str::String) = replace(str, BUILDBOT_STDLIB_PATH => Sys.STDLIB)
+"""
+    path = maybe_fixup_stdlib_path(path::String)
+
+Return `path` corrected for julia issue [#26314](https://github.com/JuliaLang/julia/issues/26314) if applicable.
+Otherwise, return the input `path` unchanged.
+
+Due to the issue mentioned above, location info for methods defined one of Julia's standard libraries
+are, for non source Julia builds, given as absolute paths on the worker that built the `julia` executable.
+This function corrects such a path to instead refer to the local path on the users drive.
+"""
+function maybe_fixup_stdlib_path(path)
+    if !safe_isfile(path)
+        maybe_stdlib_path = replace_buildbot_stdlibpath(path)
+        safe_isfile(maybe_stdlib_path) && return maybe_stdlib_path
+    end
+    return path
 end
 
 const _global_method_cache = IdDict{Any,Vector{Any}}()
@@ -138,7 +165,8 @@ function cache_methods(@nospecialize(f), name, env)
     ind_of_method_w_kws = Int[] # stores the index of methods with kws.
     i = 1
     for m in methods0
-        MS = MethodStore(m[3].name, nameof(m[3].module), clean_method_path(m[3]), m[3].line, [], Symbol[], FakeTypeName(Any))
+        file = maybe_fix_path(String(m[3].file))
+        MS = MethodStore(m[3].name, nameof(m[3].module), file, m[3].line, [], Symbol[], FakeTypeName(Any))
         # Get signature
         sig = Base.unwrap_unionall(m[1])
         argnames = getargnames(m[3])
@@ -263,7 +291,7 @@ end
 
 function allmodulenames()
     symbols = Base.IdSet{Symbol}()
-    oneverything((m, s, x, state)->(x isa Module && push!(symbols, s); return state))
+    oneverything((m, s, x, state) -> (x isa Module && push!(symbols, s); return state))
     return symbols
 end
 
@@ -464,11 +492,11 @@ function load_core()
     push!(cache[:Core][:arrayset].methods, MethodStore(:arrayset, :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any), :c => FakeTypeName(Any), :d => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:arraysize].methods, MethodStore(:arraysize, :Core, "built-in", 0, [:a => FakeTypeName(Array), :i => FakeTypeName(Int)], Symbol[], FakeTypeName(Int)))
     haskey(cache[:Core], :const_arrayref) && push!(cache[:Core][:const_arrayref].methods, MethodStore(:const_arrayref, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:fieldtype].methods, MethodStore(:fieldtype, :Core, "built-in", 0, [:t => FakeTypeName(DataType), :field => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Type)))
+    push!(cache[:Core][:fieldtype].methods, MethodStore(:fieldtype, :Core, "built-in", 0, [:t => FakeTypeName(DataType), :field => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Type{T} where T)))
     push!(cache[:Core][:getfield].methods, MethodStore(:setfield, :Core, "built-in", 0, [:object => FakeTypeName(Any), :item => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:ifelse].methods, MethodStore(:ifelse, :Core, "built-in", 0, [:condition => FakeTypeName(Bool), :x => FakeTypeName(Any), :y => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:invoke].methods, MethodStore(:invoke, :Core, "built-in", 0, [:f => FakeTypeName(Function), :x => FakeTypeName(Any), :argtypes => FakeTypeName(Type) , :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:isa].methods, MethodStore(:isa, :Core, "built-in", 0, [:a => FakeTypeName(Any), :T => FakeTypeName(Type)], Symbol[], FakeTypeName(Bool)))
+    push!(cache[:Core][:invoke].methods, MethodStore(:invoke, :Core, "built-in", 0, [:f => FakeTypeName(Function), :x => FakeTypeName(Any), :argtypes => FakeTypeName(Type{T} where T) , :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:isa].methods, MethodStore(:isa, :Core, "built-in", 0, [:a => FakeTypeName(Any), :T => FakeTypeName(Type{T} where T)], Symbol[], FakeTypeName(Bool)))
     push!(cache[:Core][:isdefined].methods, MethodStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :field => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:nfields].methods, MethodStore(:nfields, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Int)))
     push!(cache[:Core][:setfield!].methods, MethodStore(:setfield!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
@@ -476,8 +504,8 @@ function load_core()
     push!(cache[:Core][:svec].methods, MethodStore(:svec, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:throw].methods, MethodStore(:throw, :Core, "built-in", 0, [:e => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:tuple].methods, MethodStore(:tuple, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:typeassert].methods, MethodStore(:typeassert, :Core, "built-in", 0, [:x => FakeTypeName(Any), :T => FakeTypeName(Type)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:typeof].methods, MethodStore(:typeof, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Type)))
+    push!(cache[:Core][:typeassert].methods, MethodStore(:typeassert, :Core, "built-in", 0, [:x => FakeTypeName(Any), :T => FakeTypeName(Type{T} where T)], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:typeof].methods, MethodStore(:typeof, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Type{T} where T)))
 
     push!(cache[:Core][:getproperty].methods, MethodStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:setproperty!].methods, MethodStore(:setproperty!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
@@ -489,7 +517,7 @@ function load_core()
     haskey(cache[:Core], :_structtype) && push!(cache[:Core][:_structtype].methods, MethodStore(:_structtype, :Core, "built-in", 0, [:m => FakeTypeName(Module), :x => FakeTypeName(Symbol), :p => FakeTypeName(Core.SimpleVector), :fields => FakeTypeName(Core.SimpleVector), :mut => FakeTypeName(Bool), :z => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     haskey(cache[:Core], :_typebody) && push!(cache[:Core][:_typebody!].methods, MethodStore(:_typebody!, :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:(===)].methods, MethodStore(:(===), :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:(<:)].methods, MethodStore(:(<:), :Core, "built-in", 0, [:a => FakeTypeName(Type), :b => FakeTypeName(Type)], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:(<:)].methods, MethodStore(:(<:), :Core, "built-in", 0, [:a => FakeTypeName(Type{T} where T), :b => FakeTypeName(Type{T} where T)], Symbol[], FakeTypeName(Any)))
 
     for bi in builtins
         if haskey(cache[:Core], bi) && isempty(cache[:Core][bi].methods)
@@ -538,7 +566,7 @@ function collect_extended_methods(mod::ModuleStore, extendeds, mname)
     end
 end
 
-getallns() = let allns = Base.IdSet{Symbol}(); SymbolServer.oneverything((m, s, x, state)->push!(allns, s)); allns end
+getallns() = let allns = Base.IdSet{Symbol}(); SymbolServer.oneverything((m, s, x, state) -> push!(allns, s)); allns end
 
 """
     split_module_names(m::Module, allns)
@@ -569,5 +597,5 @@ function split_module_names(m::Module, allns)
     internal_names, availablenames
 end
 
-get_all_modules() = let allms = Base.IdSet{Module}(); apply_to_everything(x->if x isa Module push!(allms, x) end); allms end
+get_all_modules() = let allms = Base.IdSet{Module}(); apply_to_everything(x -> if x isa Module push!(allms, x) end); allms end
 get_used_modules(M, allms = get_all_modules()) = [m for m in allms if usedby(M, m)]

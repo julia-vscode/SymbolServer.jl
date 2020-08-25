@@ -16,12 +16,12 @@ mutable struct SymbolServerInstance
     canceled_processes::Set{Process}
     store_path::String
 
-    function SymbolServerInstance(depot_path::String = "", store_path::Union{String,Nothing} = nothing)
+    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing)
         return new(nothing, depot_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path)
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback = nothing, error_handler = nothing)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -91,7 +91,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     take!(server_is_ready)
 
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use), stderr=stderr_for_client_process), read=true, write=true)
     ssi.process = p
 
     if success(p)
