@@ -14,14 +14,19 @@ struct FakeTypeName
     parameters::Vector{Any}
 end
 
-function FakeTypeName(@nospecialize(x); justname = false)
+function FakeTypeName(@nospecialize(x); justname=false)
     if x isa DataType
         xname = x.name
         xnamename = xname.name
         if justname
             FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
         else
-            FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
+            # FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
+            ft = FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
+            for p in x.parameters
+                push!(ft.parameters, _parameter(p))
+            end
+            ft
         end
     elseif x isa Union
         FakeUnion(x)
@@ -41,18 +46,18 @@ struct FakeUnion
     a
     b
 end
-FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a, justname = true), FakeTypeName(u.b, justname = true))
+FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a, justname=true), FakeTypeName(u.b, justname=true))
 struct FakeTypeVar
     name::Symbol
     lb
     ub
 end
-FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb, justname = true), FakeTypeName(tv.ub, justname = true))
+FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb, justname=true), FakeTypeName(tv.ub, justname=true))
 struct FakeUnionAll
     var::FakeTypeVar
     body::Any
 end
-FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname = true))
+FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname=true))
 
 function _parameter(@nospecialize(p))
     if p isa Union{Int,Symbol,Bool,Char}
@@ -62,7 +67,7 @@ function _parameter(@nospecialize(p))
     elseif p isa Tuple
         _parameter.(p)
     else
-        FakeTypeName(p, justname = true)
+        FakeTypeName(p, justname=true)
     end
 end
 
@@ -79,11 +84,11 @@ function Base.print(io::IO, tn::FakeTypeName)
     end
 end
 Base.print(io::IO, x::FakeUnionAll) = print(io, x.body, " where ", x.var)
-function Base.print(io::IO, x::FakeUnion; inunion = false)
+function Base.print(io::IO, x::FakeUnion; inunion=false)
     !inunion && print(io,  "Union{")
     print(io, x.a, ",")
     if x.b isa FakeUnion
-        print(io, x.b, inunion = true)
+        print(io, x.b, inunion=true)
     else
         print(io, x.b, "}")
     end

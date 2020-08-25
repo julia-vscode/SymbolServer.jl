@@ -171,7 +171,7 @@ else
     is_package_deved(manifest, uuid) = manifest[uuid].path !== nothing
 end
 
-function sha2_256_dir(path, sha = sha = zeros(UInt8, 32))
+function sha2_256_dir(path, sha=sha = zeros(UInt8, 32))
     (uperm(path) & 0x04) != 0x04 && return
     startswith(path, ".") && return
     if isfile(path) && endswith(path, ".jl")
@@ -231,10 +231,10 @@ function _doc(@nospecialize(object))
     end
 end
 
-_lookup(vr::FakeUnion, depot::EnvStore, cont = false) = nothing
-_lookup(vr::FakeTypeName, depot::EnvStore, cont = false) = _lookup(vr.name, depot, cont)
-_lookup(vr::FakeUnionAll, depot::EnvStore, cont = false) = _lookup(vr.body, depot, cont)
-function _lookup(vr::VarRef, depot::EnvStore, cont = false)
+_lookup(vr::FakeUnion, depot::EnvStore, cont=false) = nothing
+_lookup(vr::FakeTypeName, depot::EnvStore, cont=false) = _lookup(vr.name, depot, cont)
+_lookup(vr::FakeUnionAll, depot::EnvStore, cont=false) = _lookup(vr.body, depot, cont)
+function _lookup(vr::VarRef, depot::EnvStore, cont=false)
     if vr.parent === nothing
         if haskey(depot, vr.name)
             val = depot[vr.name]
@@ -260,6 +260,8 @@ function _lookup(vr::VarRef, depot::EnvStore, cont = false)
         end
     end
 end
+
+maybe_lookup(x, env) = x isa VarRef ? _lookup(x, env, true) : x
 
 """
     maybe_getfield(k::Symbol , m::ModuleStore, server)
@@ -337,6 +339,10 @@ Base.print(io::IO, x::GenericStore) = print(io, x.name, "::", x.typ)
 extends_methods(f) = false
 extends_methods(f::FunctionStore) = f.name != f.extends
 get_top_module(vr::VarRef) = vr.parent === nothing ? vr.name : get_top_module(vr.parent)
+
+# Sorting is the main performance of calling `names`
+unsorted_names(m::Module; all::Bool=false, imported::Bool=false) =
+    ccall(:jl_module_names, Array{Symbol,1}, (Any, Cint, Cint), m, all, imported)
 
 ## recursive_copy
 #

@@ -17,12 +17,12 @@ mutable struct SymbolServerInstance
     canceled_processes::Set{Process}
     store_path::String
 
-    function SymbolServerInstance(depot_path::String = "", store_path::Union{String,Nothing} = nothing)
+    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing)
         return new(nothing, depot_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path)
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback = nothing, error_handler = nothing)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -92,7 +92,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     take!(server_is_ready)
 
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env = env_to_use), stderr = stderr_for_client_process), read = true, write = true)
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use), stderr=stderr_for_client_process), read=true, write=true)
     ssi.process = p
 
     if success(p)
@@ -202,5 +202,15 @@ function clear_disc_store(ssi::SymbolServerInstance)
 end
 
 const stdlibs = load_core()
+
+function _precompile_()
+    ccall(:jl_generating_output, Cint, ()) == 1 || return nothing
+    Base.precompile(Tuple{Type{SymbolServer.DataTypeStore},SymbolServer.FakeTypeName,SymbolServer.FakeTypeName,Array{Any,1},Array{Any,1},Array{Symbol,1},Array{Any,1},String,Bool})
+    Base.precompile(Tuple{typeof(SymbolServer.cache_methods),Any,Dict{Symbol,SymbolServer.ModuleStore}})
+    Base.precompile(Tuple{typeof(SymbolServer.getenvtree)})
+    Base.precompile(Tuple{typeof(SymbolServer.symbols),Dict{Symbol,SymbolServer.ModuleStore}})
+    Base.precompile(Tuple{typeof(copy),Base.Broadcast.Broadcasted{Base.Broadcast.Style{Tuple},Nothing,typeof(SymbolServer._parameter),Tuple{NTuple{4,Symbol}}}})
+end
+VERSION >= v"1.4.2" && _precompile_()
 
 end # module
