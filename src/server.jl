@@ -4,7 +4,7 @@ rm("/home/zac/tmp/ss.log")
 io = open("/home/zac/tmp/ss.log", "a")
 pipename = length(ARGS) > 1 ? ARGS[2] : nothing
 
-conn = pipename!==nothing ? Sockets.connect(pipename) : nothing
+conn = pipename !== nothing ? Sockets.connect(pipename) : nothing
 
 start_time = time_ns()
 
@@ -16,17 +16,17 @@ start_time = time_ns()
 
     # Set BELOW_NORMAL_PRIORITY_CLASS
     ret = ccall(:SetPriorityClass, stdcall, Cint, (Ptr{Cvoid}, Culong), p_handle, 0x00004000)
-    ret!=1 && @warn "Something went wrong when setting BELOW_NORMAL_PRIORITY_CLASS."
+    ret != 1 && @warn "Something went wrong when setting BELOW_NORMAL_PRIORITY_CLASS."
 else
-    ret = ccall(:nice, Cint, (Cint, ), 1)
+    ret = ccall(:nice, Cint, (Cint,), 1)
     # We don't check the return value because it doesn't really matter
 end
 
 module LoadingBay
 end
 
-# Make sure we can load stdlibs 
-!in("@stdlib",LOAD_PATH) && push!(LOAD_PATH, "@stdlib")
+# Make sure we can load stdlibs
+!in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib")
 
 using Serialization, Pkg, SHA
 using Base: UUID
@@ -35,7 +35,7 @@ include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
 
-store_path = length(ARGS)>0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
+store_path = length(ARGS) > 0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
 ctx = try
     Pkg.Types.Context()
@@ -59,16 +59,14 @@ function load_package(c::Pkg.Types.Context, uuid, conn)
     write(io, "\n Loading: ", pe_name)
     pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
     if pid in keys(Base.loaded_modules)
-        write(io, ", was already loaded.")
-        conn!==nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")
+        conn !== nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")
         LoadingBay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(LoadingBay, Symbol(pe_name))
     else
         m = try
-            write(io, ", importing...")
-            conn!==nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
+            conn !== nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
             LoadingBay.eval(:(import $(Symbol(pe_name))))
-            conn!==nothing && println(conn, "STOPLOAD;$pe_name")
+            conn !== nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(LoadingBay, Symbol(pe_name))
             write(io, "successfully.")
         catch e
@@ -85,9 +83,9 @@ function write_cache(name, pkg)
 end
 
 function write_depot(server, ctx, written_caches)
-    for  (uuid, pkg) in server.depot
+    for (uuid, pkg) in server.depot
         filename = get_filename_from_name(ctx.env.manifest, uuid)
-        filename===nothing && continue
+        filename === nothing && continue
         cache_path = joinpath(server.storedir, filename)
         cache_path in written_caches && continue
         push!(written_caches, cache_path)
@@ -106,11 +104,11 @@ write(io, "Checking project:\n")
 for (pk_name, uuid) in toplevel_pkgs
     write(io, pk_name, ": ")
     file_name = get_filename_from_name(ctx.env.manifest, uuid)
-    # We sometimes have UUIDs in the project file that are not in the 
+    # We sometimes have UUIDs in the project file that are not in the
     # manifest file. That seems like something that shouldn't happen, but
     # in practice is not under our control. For now, we just skip these
     # packages
-    file_name===nothing && continue
+    file_name === nothing && continue
     cache_path = joinpath(server.storedir, file_name)
 
     if isfile(cache_path)
@@ -153,8 +151,8 @@ env_symbols = getenvtree()
 an = allnames()
 visited = Base.IdSet{Module}([Base, Core]) # don't need to cache these each time...
 for (pid, m) in Base.loaded_modules
-    if pid.uuid !== nothing && is_stdlib(pid.uuid) && 
-        (file_name = get_filename_from_name(ctx.env.manifest, pid.uuid)) !== nothing && 
+    if pid.uuid !== nothing && is_stdlib(pid.uuid) &&
+        (file_name = get_filename_from_name(ctx.env.manifest, pid.uuid)) !== nothing &&
         isfile(joinpath(server.storedir, file_name))
         push!(visited, m)
         delete!(env_symbols, Symbol(pid.name))
@@ -178,7 +176,7 @@ end
 write_depot(server, server.context, written_caches)
 end_time = time_ns()
 
-elapsed_time_in_s = (end_time-start_time)/1e9
+elapsed_time_in_s = (end_time - start_time) / 1e9
 @info "Symbol server indexing took $elapsed_time_in_s seconds."
 
 end

@@ -12,11 +12,11 @@ export supports_get_columns_view, get_columns_view
 function isiterabletable(x::T) where {T}
     isiterable(x) || return false
 
-    if Base.IteratorEltype(x)==Base.HasEltype()
+    if Base.IteratorEltype(x) == Base.HasEltype()
         et = Base.eltype(x)
         if et <: NamedTuple
             return true
-        elseif et===Any
+        elseif et === Any
             return missing
         else
             return false

@@ -17,20 +17,21 @@ mutable struct SymbolServerInstance
     canceled_processes::Set{Process}
     store_path::String
 
-    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing)
-        return new(nothing, depot_path, Set{Process}(), store_path===nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path)
+    function SymbolServerInstance(depot_path::String = "", store_path::Union{String,Nothing} = nothing)
+        return new(nothing, depot_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path)
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing)
-    !ispath(environment_path) && return :success, deepcopy(stdlibs)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback = nothing, error_handler = nothing)
+    !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
     server_script = joinpath(@__DIR__, "server.jl")
 
     env_to_use = copy(ENV)
+    env_to_use["JULIA_REVISE"] = "manual" # Try to make sure Revise isn't enabled.
 
-    if ssi.depot_path==""
+    if ssi.depot_path == ""
         delete!(env_to_use, "JULIA_DEPOT_PATH")
     else
         env_to_use["JULIA_DEPOT_PATH"] = ssi.depot_path
@@ -38,7 +39,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     stderr_for_client_process = VERSION < v"1.1.0" ? nothing : IOBuffer()
 
-    if ssi.process!==nothing
+    if ssi.process !== nothing
         to_cancel_p = ssi.process
         ssi.process = nothing
         push!(ssi.canceled_processes, to_cancel_p)
@@ -63,18 +64,18 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
         s = readline(conn)
 
-        while s!="" && isopen(conn)
+        while s != "" && isopen(conn)
             parts = split(s, ';')
-            if parts[1]=="STARTLOAD"
+            if parts[1] == "STARTLOAD"
                 currently_loading_a_package = true
                 current_package_name = parts[2]
                 current_package_uuid = parts[3]
                 current_package_version = parts[4]
-                progress_callback!==nothing && progress_callback(current_package_name)
-            elseif parts[1]=="STOPLOAD"
+                progress_callback !== nothing && progress_callback(current_package_name)
+            elseif parts[1] == "STOPLOAD"
                 currently_loading_a_package = false
-            elseif parts[1]=="PROCESSPKG"
-                progress_callback!==nothing && progress_callback(parts[2])
+            elseif parts[1] == "PROCESSPKG"
+                progress_callback !== nothing && progress_callback(parts[2])
             else
                 error("Unknown command.")
             end
@@ -82,11 +83,11 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         end
     catch err
         bt = catch_backtrace()
-        if error_handler!==nothing
+        if error_handler !== nothing
             error_handler(err, bt)
         else
             Base.display_error(stderr, err, bt)
-        end        
+        end
     end
 
     take!(server_is_ready)
@@ -97,17 +98,17 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     if success(p)
         # Now we create a new symbol store and load everything into that
         # from disc
-        new_store = deepcopy(stdlibs)
+        new_store = recursive_copy(stdlibs)
         load_project_packages_into_store!(ssi, environment_path, new_store)
 
         return :success, new_store
     elseif p in ssi.canceled_processes
         delete!(ssi.canceled_processes, p)
-        
+
         return :canceled, nothing
     else
         if currently_loading_a_package
-            return :package_load_crash, (package_name = current_package_name, stderr=stderr_for_client_process)
+            return :package_load_crash, (package_name = current_package_name, stderr = stderr_for_client_process)
         else
             return :failure, stderr_for_client_process
         end
@@ -152,7 +153,7 @@ Tries to load the on-disc stored cache for a package (uuid). Attempts to generat
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
     filename = get_filename_from_name(manifest, uuid)
 
-    filename===nothing && return
+    filename === nothing && return
 
     cache_path = joinpath(ssi.store_path, filename)
 
