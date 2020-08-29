@@ -416,3 +416,20 @@ recursive_copy(gs::GenericStore) = GenericStore(recursive_copy(gs.name),
                                                 recursive_copy(gs.typ),
                                                 gs.doc,
                                                 gs.exported)
+
+function todo_path(x::ModuleStore)
+    for (_, a) in x.vals
+        todo_path(a)
+    end
+end
+
+function todo_path(x::Union{DataTypeStore,FunctionStore})
+    for m in x.methods
+        todo_path(m)
+    end
+end
+function todo_path(x::MethodStore)
+    # @info x.file
+end
+function todo_path(x)
+end
