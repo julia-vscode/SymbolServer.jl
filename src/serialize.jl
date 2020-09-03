@@ -1,6 +1,6 @@
 module CacheStore
-using SymbolServer: VarRef, FakeTypeName, FakeTypeofBottom, FakeTypeVar, FakeUnion, FakeUnionAll
-using SymbolServer: ModuleStore, Package, FunctionStore, MethodStore, DataTypeStore, GenericStore
+using ..SymbolServer: VarRef, FakeTypeName, FakeTypeofBottom, FakeTypeVar, FakeUnion, FakeUnionAll
+using ..SymbolServer: ModuleStore, Package, FunctionStore, MethodStore, DataTypeStore, GenericStore
 
 const NothingHeader = 0x01
 const SymbolHeader = 0x02
@@ -141,13 +141,13 @@ function write(io, x::ModuleStore)
     write_vector(io, x.used_modules)
 end
 
-# function write(io, x::Package)
-#     Base.write(io, PackageHeader)
-#     write(io, x.name)
-#     write(io, x.val)
-#     write(io, x.doc)
-#     write(io, x.exported)
-# end
+function write(io, x::Package)
+    Base.write(io, PackageHeader)
+    write(io, x.name)
+    write(io, x.val)
+    Base.write(io, UInt128(x.uuid))
+    Base.write(io, x.sha === nothing ? zeros(UInt8, 32) : x.sha)
+end
 
 function write_vector(io, x)
     Base.write(io, length(x))
@@ -225,15 +225,20 @@ function read(io, t = Base.read(io, UInt8))
     elseif t === TupleHeader
         N = Base.read(io, Int)
         ntuple(i->read(io), N)
+    elseif t === PackageHeader
+        name = read(io)
+        val = read(io)
+        uuid = Base.UUID(Base.read(io, UInt128))
+        sha = Base.read(io, 32)
+        Package(name, val, uuid, all(x == 0x00 for x in sha) ? nothing : sha)
     else
-        error("HIYA")
+        error("HIYA: $t")
     end
 end
 
 function read_vector(io, T)
     n = Base.read(io, Int)
     v = T[]
-    # v = Array{T}(undef, n)
     for i = 1:n
         push!(v, read(io))
     end

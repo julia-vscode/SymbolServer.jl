@@ -385,7 +385,6 @@ recursive_copy(m::ModuleStore) = ModuleStore(recursive_copy(m.name), recursive_c
 
 recursive_copy(p::Package) = Package(p.name,
                                      recursive_copy(p.val),
-                                     recursive_copy(p.ver),
                                      p.uuid,
                                      recursive_copy(p.sha))
 

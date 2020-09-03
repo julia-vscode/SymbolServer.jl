@@ -26,11 +26,10 @@ const EnvStore = Dict{Symbol,ModuleStore}
 struct Package
     name::String
     val::ModuleStore
-    ver::Any
     uuid::Base.UUID
-    sha
+    sha::Union{Vector{UInt8},Nothing}
 end
-Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha)
+Package(name::String, val::ModuleStore, uuid::String, sha) = Package(name, val, Base.UUID(uuid), sha)
 
 struct MethodStore
     name::Symbol
@@ -548,7 +547,7 @@ function collect_extended_methods(mod::ModuleStore, extendeds, mname)
     end
 end
 
-getallns() = let allns = Base.IdSet{Symbol}(); SymbolServer.oneverything((m, s, x, state) -> push!(allns, s)); allns end
+getallns() = let allns = Base.IdSet{Symbol}(); oneverything((m, s, x, state) -> push!(allns, s)); allns end
 
 """
     split_module_names(m::Module, allns)

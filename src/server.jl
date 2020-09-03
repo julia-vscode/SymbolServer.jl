@@ -27,12 +27,14 @@ end
 # Make sure we can load stdlibs
 !in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib")
 
-using Serialization, Pkg, SHA
+using Pkg, SHA
 using Base: UUID
 
 include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
+include("serialize.jl")
+using .CacheStore
 
 store_path = length(ARGS) > 0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
@@ -75,7 +77,7 @@ end
 
 function write_cache(name, pkg)
     open(joinpath(server.storedir, name), "w") do io
-        serialize(io, pkg)
+        CacheStore.write(io, pkg)
     end
 end
 
@@ -110,7 +112,7 @@ for (pk_name, uuid) in toplevel_pkgs
     if isfile(cache_path)
         if is_package_deved(ctx.env.manifest, uuid)
             cached_version = open(cache_path) do io
-                deserialize(io)
+                CacheStore.read(io)
             end
             if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
                 @info "Outdated sha, will recache package $pk_name ($uuid)"
@@ -147,7 +149,7 @@ for (pid, m) in Base.loaded_modules
     end
 end
 
-symbols(env_symbols, nothing, SymbolServer.getallns(), visited)
+symbols(env_symbols, nothing, getallns(), visited)
 
 # Wrap the `ModuleStore`s as `Package`s.
 for (pkg_name, cache) in env_symbols
@@ -155,7 +157,7 @@ for (pkg_name, cache) in env_symbols
     !isinmanifest(ctx, pkg_name) && continue
     uuid = packageuuid(ctx, String(pkg_name))
     pe = frommanifest(ctx, uuid)
-    server.depot[uuid] = Package(String(pkg_name), cache, version(pe), uuid, sha_pkg(pe))
+    server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(pe))
 end
 
 # Write to disc
