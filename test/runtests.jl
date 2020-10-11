@@ -136,5 +136,63 @@ end
 end
 
 
+# use for testing get_symbol_server
+using Sockets, SHA, Markdown
 
+@testset "get_symbol_servre" begin
 
+    let out = get_symbol_server()
+        symbol_server, symbol_extends = out
+        @test haskey(symbol_server, :Core)
+        @test typeof(symbol_server[:Core]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Base)
+        @test typeof(symbol_server[:Base]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Main)
+        @test typeof(symbol_server[:Main]) === SymbolServer.ModuleStore
+
+        @test typeof(symbol_extends) === Dict{SymbolServer.VarRef,Vector{SymbolServer.VarRef}}
+    end
+
+    let out = get_symbol_server(:Sockets)
+        symbol_server, symbol_extends = out
+
+        @test haskey(symbol_server, :Sockets)
+        @test typeof(symbol_server[:Sockets]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Core)
+        @test typeof(symbol_server[:Core]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Base)
+        @test typeof(symbol_server[:Base]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Main)
+        @test typeof(symbol_server[:Main]) === SymbolServer.ModuleStore
+
+        @test typeof(symbol_extends) === Dict{SymbolServer.VarRef, Vector{SymbolServer.VarRef}}
+
+    end
+
+    let out = get_symbol_server([:SHA, :Markdown])
+        symbol_server, symbol_extends = out
+
+        @test haskey(symbol_server, :SHA)
+        @test typeof(symbol_server[:SHA]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Markdown)
+        @test typeof(symbol_server[:Markdown]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Core)
+        @test typeof(symbol_server[:Core]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Base)
+        @test typeof(symbol_server[:Base]) === SymbolServer.ModuleStore
+
+        @test haskey(symbol_server, :Main)
+        @test typeof(symbol_server[:Main]) === SymbolServer.ModuleStore
+
+        @test typeof(symbol_extends) === Dict{SymbolServer.VarRef, Vector{SymbolServer.VarRef}}
+
+    end
+end
