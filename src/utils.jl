@@ -276,7 +276,7 @@ function maybe_getfield(k::Symbol, m::ModuleStore, envstore)
         for v in m.used_modules
             !haskey(m.vals, v) && continue
             submod = m.vals[v]
-            if submod isa ModuleStore && k in submod.exportednames
+            if submod isa ModuleStore && k in submod.exportednames && haskey(submod.vals, k)
                 return submod.vals[k]
             elseif submod isa VarRef
                 submod = _lookup(submod, envstore, true)
