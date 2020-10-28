@@ -1,6 +1,6 @@
 module SymbolServer
 
-export SymbolServerInstance, getstore
+export SymbolServerInstance, getstore, get_symbol_server
 
 using Serialization, Pkg, SHA
 using Base: UUID, Process
@@ -201,6 +201,36 @@ function clear_disc_store(ssi::SymbolServerInstance)
 end
 
 const stdlibs = load_core()
+
+
+VersionFloat(v::VersionNumber) = join(split(string(v),'.')[1:2],'.')
+
+global_env_path = joinpath(homedir(),".julia/environments/v$(VersionFloat(VERSION))")
+
+"""
+    symbol_server, symbol_extends = get_symbol_server(module_sym::Vector{Symbol}, env_path = global_env_path)
+    symbol_server, symbol_extends = get_symbol_server(module_sym::Symbol)
+    symbol_server, symbol_extends = get_symbol_server(module_sym::Nothing = nothing)
+
+Get symbols for the given module or current environment
+"""
+function get_symbol_server(module_sym::Vector{Symbol}, env_path = global_env_path)
+    # TODO write these to a file
+    printstyled("Getting the symbols for the environment at $env_path. Please wait....", color = :yellow)
+    env = SymbolServer.getenvtree(module_sym)
+    # symbol_server = SymbolServer.symbols(env)
+    symbol_server = getstore(SymbolServerInstance("", env_path), env_path)[2]
+    symbol_extends =  SymbolServer.collect_extended_methods(env)
+    return symbol_server, symbol_extends
+end
+
+get_symbol_server(module_sym::Symbol) = get_symbol_server([module_sym])
+
+function get_symbol_server(module_sym::Nothing = nothing)
+    symbol_server = SymbolServer.stdlibs
+    symbol_extends =  SymbolServer.collect_extended_methods(SymbolServer.stdlibs)
+    return symbol_server, symbol_extends
+end
 
 function _precompile_()
     ccall(:jl_generating_output, Cint, ()) == 1 || return nothing
