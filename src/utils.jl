@@ -379,6 +379,17 @@ recursive_copy(tv::FakeTypeVar) = FakeTypeVar(tv.name, recursive_copy(tv.lb), re
 
 recursive_copy(ua::FakeUnionAll) = FakeUnionAll(recursive_copy(ua.var), recursive_copy(ua.body))
 
+@static if !(Vararg isa Type)
+    function recursive_copy(va::FakeTypeofVararg)
+        if isdefined(va, :N)
+            FakeTypeofVararg(recursive_copy(va.T), va.N)
+        elseif isdefined(va, :T)
+            FakeTypeofVararg(recursive_copy(va.T))
+        else
+            FakeTypeofVararg()
+        end
+    end
+end
 
 recursive_copy(m::ModuleStore) = ModuleStore(recursive_copy(m.name), recursive_copy(m.vals), m.doc,
                                              m.exported, copy(m.exportednames), copy(m.used_modules))
