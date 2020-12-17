@@ -135,6 +135,16 @@ end
     end
 end
 
+using SymbolServer: FakeTypeName
 
+@testset "TypeofVararg" begin
+    Ts = [Vararg, Vararg{Int}, Vararg{Rational}, Vararg{Complex{Float32}}, Vararg{Bool,3}, NTuple{4,Any}]
+    for ((i, T1), (j, T2)) in Iterators.product(enumerate.((Ts, Ts))...)
+        @test (FakeTypeName(T1) == FakeTypeName(T2)) == (i == j)
+    end
 
+    for T in Ts
+        @test eval(Meta.parse(string(FakeTypeName(T)))) == T
+    end
+end
 

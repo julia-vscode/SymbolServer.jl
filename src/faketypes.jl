@@ -151,7 +151,7 @@ Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
             print(io, "}")
         end
     end
-    function Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom)
+    function Base.:(==)(a::FakeTypeofVararg, b::FakeTypeofVararg)
         if isdefined(a, :T)
             if isdefined(b, :T) && a.T == b.T
                 if isdefined(a, :N)
