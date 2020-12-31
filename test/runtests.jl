@@ -138,7 +138,9 @@ end
 using SymbolServer: FakeTypeName
 
 @testset "TypeofVararg" begin
-    Ts = [Vararg, Vararg{Int}, Vararg{Rational}, Vararg{Complex{Float32}}, Vararg{Bool,3}, NTuple{4,Any}]
+    Ts = Any[Vararg, Vararg{Bool,3}, NTuple{N,Any} where N]
+    isdefined(Core, :TypeofVararg) && append!(Ts, Any[Vararg{Int}, Vararg{Rational}])
+
     for ((i, T1), (j, T2)) in Iterators.product(enumerate.((Ts, Ts))...)
         if i == j
             @test FakeTypeName(T1) == FakeTypeName(T2)
