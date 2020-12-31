@@ -134,9 +134,9 @@ Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
     end
     function FakeTypeofVararg(va::Core.TypeofVararg)
         if isdefined(va, :N)
-            FakeTypeofVararg(FakeTypeName(va.T), va.N)
+            FakeTypeofVararg(FakeTypeName(va.T; justname=true), va.N)
         elseif isdefined(va, :T)
-            FakeTypeofVararg(FakeTypeName(va.T))
+            FakeTypeofVararg(FakeTypeName(va.T; justname=true))
         else
             FakeTypeofVararg()
         end
