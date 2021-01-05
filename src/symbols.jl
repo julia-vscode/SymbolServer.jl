@@ -462,30 +462,38 @@ function load_core()
         end
     end
     haskey(cache[:Core], :_typevar) && push!(cache[:Core][:_typevar].methods, MethodStore(:_typevar, :Core, "built-in", 0, [:n => FakeTypeName(Symbol), :lb => FakeTypeName(Any), :ub => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:_apply].methods, MethodStore(:_apply, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
-    haskey(cache[:Core].vals, :_apply_iterate) && push!(cache[:Core][:_apply_iterate].methods, MethodStore(:_apply_iterate, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:_apply_latest].methods, MethodStore(:_apply_latest, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:_apply_pure].methods, MethodStore(:_apply_pure, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:_expr].methods, MethodStore(:_expr, :Core, "built-in", 0, [:head => FakeTypeName(Symbol), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Expr)))
+    push!(cache[:Core][:_apply].methods, MethodStore(:_apply, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
+    haskey(cache[:Core].vals, :_apply_iterate) && push!(cache[:Core][:_apply_iterate].methods, MethodStore(:_apply_iterate, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
+    if isdefined(Core, :_call_latest)
+        push!(cache[:Core][:_call_latest].methods, MethodStore(:_call_latest, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
+        push!(cache[:Core][:_call_in_world].methods, MethodStore(:_call_in_world, :Core, "built-in", 0, [:world => FakeTypeName(UInt), :f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
+    else
+        if isdefined(Core, :_apply_in_world)
+            push!(cache[:Core][:_apply_in_world].methods, MethodStore(:_apply_in_world, :Core, "built-in", 0, [:world => FakeTypeName(UInt), :f => FakeTypeName(Function), :args => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
+        end
+        push!(cache[:Core][:_apply_latest].methods, MethodStore(:_apply_latest, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
+    end
+    push!(cache[:Core][:_apply_pure].methods, MethodStore(:_apply_pure, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:_expr].methods, MethodStore(:_expr, :Core, "built-in", 0, [:head => FakeTypeName(Symbol), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Expr)))
     haskey(cache[:Core].vals, :_typevar) && push!(cache[:Core][:_typevar].methods, MethodStore(:_typevar, :Core, "built-in", 0, [:name => FakeTypeName(Symbol), :lb => FakeTypeName(Any), :ub => FakeTypeName(Any)], Symbol[], FakeTypeName(TypeVar)))
-    push!(cache[:Core][:applicable].methods, MethodStore(:applicable, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Bool)))
-    push!(cache[:Core][:apply_type].methods, MethodStore(:apply_type, :Core, "built-in", 0, [:T => FakeTypeName(UnionAll), :types => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(UnionAll)))
+    push!(cache[:Core][:applicable].methods, MethodStore(:applicable, :Core, "built-in", 0, [:f => FakeTypeName(Function), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Bool)))
+    push!(cache[:Core][:apply_type].methods, MethodStore(:apply_type, :Core, "built-in", 0, [:T => FakeTypeName(UnionAll), :types => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(UnionAll)))
     push!(cache[:Core][:arrayref].methods, MethodStore(:arrayref, :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any), :c => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:arrayset].methods, MethodStore(:arrayset, :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any), :c => FakeTypeName(Any), :d => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:arraysize].methods, MethodStore(:arraysize, :Core, "built-in", 0, [:a => FakeTypeName(Array), :i => FakeTypeName(Int)], Symbol[], FakeTypeName(Int)))
-    haskey(cache[:Core], :const_arrayref) && push!(cache[:Core][:const_arrayref].methods, MethodStore(:const_arrayref, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
+    haskey(cache[:Core], :const_arrayref) && push!(cache[:Core][:const_arrayref].methods, MethodStore(:const_arrayref, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:fieldtype].methods, MethodStore(:fieldtype, :Core, "built-in", 0, [:t => FakeTypeName(DataType), :field => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Type{T} where T)))
     push!(cache[:Core][:getfield].methods, MethodStore(:setfield, :Core, "built-in", 0, [:object => FakeTypeName(Any), :item => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:ifelse].methods, MethodStore(:ifelse, :Core, "built-in", 0, [:condition => FakeTypeName(Bool), :x => FakeTypeName(Any), :y => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:invoke].methods, MethodStore(:invoke, :Core, "built-in", 0, [:f => FakeTypeName(Function), :x => FakeTypeName(Any), :argtypes => FakeTypeName(Type{T} where T) , :args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:invoke].methods, MethodStore(:invoke, :Core, "built-in", 0, [:f => FakeTypeName(Function), :x => FakeTypeName(Any), :argtypes => FakeTypeName(Type{T} where T) , :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:isa].methods, MethodStore(:isa, :Core, "built-in", 0, [:a => FakeTypeName(Any), :T => FakeTypeName(Type{T} where T)], Symbol[], FakeTypeName(Bool)))
     push!(cache[:Core][:isdefined].methods, MethodStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :field => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:nfields].methods, MethodStore(:nfields, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Int)))
     push!(cache[:Core][:setfield!].methods, MethodStore(:setfield!, :Core, "built-in", 0, [:value => FakeTypeName(Any), :name => FakeTypeName(Symbol), :x => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:sizeof].methods, MethodStore(:sizeof, :Core, "built-in", 0, [:obj => FakeTypeName(Any)], Symbol[], FakeTypeName(Int)))
-    push!(cache[:Core][:svec].methods, MethodStore(:svec, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:svec].methods, MethodStore(:svec, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:throw].methods, MethodStore(:throw, :Core, "built-in", 0, [:e => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:tuple].methods, MethodStore(:tuple, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:tuple].methods, MethodStore(:tuple, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:typeassert].methods, MethodStore(:typeassert, :Core, "built-in", 0, [:x => FakeTypeName(Any), :T => FakeTypeName(Type{T} where T)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:typeof].methods, MethodStore(:typeof, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Type{T} where T)))
 
@@ -504,13 +512,13 @@ function load_core()
     for bi in builtins
         if haskey(cache[:Core], bi) && isempty(cache[:Core][bi].methods)
             # Add at least one arbitrary method for anything left over
-            push!(cache[:Core][bi].methods, MethodStore(bi, :none, "built-in", 0, [:x => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)))
+            push!(cache[:Core][bi].methods, MethodStore(bi, :none, "built-in", 0, [:x => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
         end
     end
 
     cache[:Core][:ccall] = FunctionStore(VarRef(VarRef(Core), :ccall),
         MethodStore[
-            MethodStore(:ccall, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any,N} where N)], Symbol[], FakeTypeName(Any)) # General method - should be fixed
+            MethodStore(:ccall, :Core, "built-in", 0, [:args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)) # General method - should be fixed
         ],
         "`ccall((function_name, library), returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_name, returntype, (argtype1, ...), argvalue1, ...)`\n`ccall(function_pointer, returntype, (argtype1, ...), argvalue1, ...)`\n\nCall a function in a C-exported shared library, specified by the tuple (`function_name`, `library`), where each component is either a string or symbol. Instead of specifying a library, one\ncan also use a `function_name` symbol or string, which is resolved in the current process. Alternatively, `ccall` may also be used to call a function pointer `function_pointer`, such as one\nreturned by `dlsym`.\n\nNote that the argument type tuple must be a literal tuple, and not a tuple-valued variable or expression.\n\nEach `argvalue` to the `ccall` will be converted to the corresponding `argtype`, by automatic insertion of calls to `unsafe_convert(argtype, cconvert(argtype, argvalue))`. (See also the documentation for `unsafe_convert` and `cconvert` for further details.) In most cases, this simply results in a call to `convert(argtype, argvalue)`.",
         VarRef(VarRef(Core), :ccall),

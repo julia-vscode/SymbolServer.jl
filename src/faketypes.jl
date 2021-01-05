@@ -15,6 +15,9 @@ struct FakeTypeName
 end
 
 function FakeTypeName(@nospecialize(x); justname=false)
+    @static if !(Vararg isa Type)
+        x isa Core.TypeofVararg && return FakeTypeofVararg(x)
+    end
     if x isa DataType
         xname = x.name
         xnamename = xname.name
@@ -120,3 +123,47 @@ Base.:(==)(a::FakeTypeVar, b::FakeTypeVar) = a.lb == b.lb && a.name == b.name &&
 Base.:(==)(a::FakeUnionAll, b::FakeUnionAll) = a.var == b.var && a.body == b.body
 Base.:(==)(a::FakeUnion, b::FakeUnion) = a.a == b.a && a.b == b.b
 Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
+
+@static if !(Vararg isa Type)
+    struct FakeTypeofVararg
+        T
+        N
+        FakeTypeofVararg() = new()
+        FakeTypeofVararg(T) = new(T)
+        FakeTypeofVararg(T, N) = new(T, N)
+    end
+    function FakeTypeofVararg(va::Core.TypeofVararg)
+        if isdefined(va, :N)
+            FakeTypeofVararg(FakeTypeName(va.T; justname=true), va.N)
+        elseif isdefined(va, :T)
+            FakeTypeofVararg(FakeTypeName(va.T; justname=true))
+        else
+            FakeTypeofVararg()
+        end
+    end
+    function Base.print(io::IO, va::FakeTypeofVararg)
+        print(io, "Vararg")
+        if isdefined(va, :T)
+            print(io, "{", va.T)
+            if isdefined(va, :N)
+                print(io, ",", va.N)
+            end
+            print(io, "}")
+        end
+    end
+    function Base.:(==)(a::FakeTypeofVararg, b::FakeTypeofVararg)
+        if isdefined(a, :T)
+            if isdefined(b, :T) && a.T == b.T
+                if isdefined(a, :N)
+                    isdefined(b, :N) && a.N == b.N
+                else
+                    !isdefined(b, :N)
+                end
+            else
+                false
+            end
+        else
+            !isdefined(b, :T)
+        end
+    end
+end
