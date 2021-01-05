@@ -137,6 +137,22 @@ end
     @test SymbolServer.stdlibs[:Base][:Sort][:sort] isa SymbolServer.FunctionStore
 end
 
+using SymbolServer: FakeTypeName
 
+@testset "TypeofVararg" begin
+    Ts = Any[Vararg, Vararg{Bool,3}, NTuple{N,Any} where N]
+    isdefined(Core, :TypeofVararg) && append!(Ts, Any[Vararg{Int}, Vararg{Rational}])
 
+    for ((i, T1), (j, T2)) in Iterators.product(enumerate.((Ts, Ts))...)
+        if i == j
+            @test FakeTypeName(T1) == FakeTypeName(T2)
+        else
+            @test FakeTypeName(T1) != FakeTypeName(T2)
+        end
+    end
+
+    for T in Ts
+        @test eval(Meta.parse(string(FakeTypeName(T)))) == T
+    end
+end
 
