@@ -408,8 +408,9 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                     else
                         cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
                     end
-                else
+                elseif !((cache[s] isa FunctionStore || cache[s] isa DataTypeStore) && !isempty(cache[s].methods))
                     # These are imported variables that are reexported.
+                    # We don't want to remove Func/DT stores that have methods (these will be specific to the module)
                     if x isa Core.IntrinsicFunction
                         cache[s] = VarRef(VarRef(Core.Intrinsics), nameof(x))
                     else
