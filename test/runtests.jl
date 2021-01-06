@@ -133,6 +133,8 @@ end
 
         @test length(readdir(store_path)) == 0
     end
+
+    @test SymbolServer.stdlibs[:Base][:Sort][:sort] isa SymbolServer.FunctionStore
 end
 
 using SymbolServer: FakeTypeName
