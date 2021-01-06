@@ -198,7 +198,7 @@ function _doc(@nospecialize(object))
         sig = Union{}
         if Base.Docs.defined(binding)
             result = Base.Docs.getdoc(Base.Docs.resolve(binding), sig)
-            result === nothing || return result
+            result === nothing || return string(result)
         end
         results, groups = Base.Docs.DocStr[], Base.Docs.MultiDoc[]
     # Lookup `binding` and `sig` for matches in all modules of the docsystem.
