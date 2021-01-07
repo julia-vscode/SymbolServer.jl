@@ -198,7 +198,7 @@ function _doc(@nospecialize(object))
         sig = Union{}
         if Base.Docs.defined(binding)
             result = Base.Docs.getdoc(Base.Docs.resolve(binding), sig)
-            result === nothing || return result
+            result === nothing || return string(result)
         end
         results, groups = Base.Docs.DocStr[], Base.Docs.MultiDoc[]
     # Lookup `binding` and `sig` for matches in all modules of the docsystem.
@@ -276,7 +276,7 @@ function maybe_getfield(k::Symbol, m::ModuleStore, envstore)
         for v in m.used_modules
             !haskey(m.vals, v) && continue
             submod = m.vals[v]
-            if submod isa ModuleStore && k in submod.exportednames
+            if submod isa ModuleStore && k in submod.exportednames && haskey(submod.vals, k)
                 return submod.vals[k]
             elseif submod isa VarRef
                 submod = _lookup(submod, envstore, true)
@@ -379,6 +379,17 @@ recursive_copy(tv::FakeTypeVar) = FakeTypeVar(tv.name, recursive_copy(tv.lb), re
 
 recursive_copy(ua::FakeUnionAll) = FakeUnionAll(recursive_copy(ua.var), recursive_copy(ua.body))
 
+@static if !(Vararg isa Type)
+    function recursive_copy(va::FakeTypeofVararg)
+        if isdefined(va, :N)
+            FakeTypeofVararg(recursive_copy(va.T), va.N)
+        elseif isdefined(va, :T)
+            FakeTypeofVararg(recursive_copy(va.T))
+        else
+            FakeTypeofVararg()
+        end
+    end
+end
 
 recursive_copy(m::ModuleStore) = ModuleStore(recursive_copy(m.name), recursive_copy(m.vals), m.doc,
                                              m.exported, copy(m.exportednames), copy(m.used_modules))
