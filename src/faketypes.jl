@@ -129,7 +129,7 @@ Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
         T
         N
         FakeTypeofVararg() = new()
-        FakeTypeofVararg(T) = new(T)
+        FakeTypeofVararg(T) = (new(T))
         FakeTypeofVararg(T, N) = new(T, N)
     end
     function FakeTypeofVararg(va::Core.TypeofVararg)

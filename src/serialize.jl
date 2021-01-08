@@ -1,5 +1,5 @@
 module CacheStore
-using ..SymbolServer: VarRef, FakeTypeName, FakeTypeofBottom, FakeTypeVar, FakeUnion, FakeUnionAll
+using ..SymbolServer: VarRef, FakeTypeName, FakeTypeofBottom, FakeTypeVar, FakeUnion, FakeUnionAll, FakeTypeofVararg
 using ..SymbolServer: ModuleStore, Package, FunctionStore, MethodStore, DataTypeStore, GenericStore
 
 const NothingHeader = 0x01
@@ -22,6 +22,8 @@ const PackageHeader = 0x11
 const TrueHeader = 0x12
 const FalseHeader = 0x13
 const TupleHeader = 0x14
+const FakeTypeofVarargHeader = 0x15
+const UndefHeader = 0x16
 
 
 function write(io, x::VarRef)
@@ -81,6 +83,14 @@ function write(io, x::FakeUnionAll)
     Base.write(io, FakeUnionAllHeader)
     write(io, x.var)
     write(io, x.body)
+end
+
+@static if !(Vararg isa Type)
+    function write(io, x::FakeTypeofVararg)
+        Base.write(io, FakeTypeofVarargHeader)
+        isdefined(x, :T) ? write(io, x.T) : Base.write(io, UndefHeader)
+        isdefined(x, :N) ? write(io, x.N) : Base.write(io, UndefHeader)
+    end
 end
 
 function write(io, x::MethodStore)
@@ -185,6 +195,17 @@ function read(io, t = Base.read(io, UInt8))
         FakeUnion(read(io), read(io))
     elseif t === FakeUnionAllHeader
         FakeUnionAll(read(io), read(io))
+    elseif t === FakeTypeofVarargHeader
+        T, N = read(io), read(io)
+        if T === nothing
+            FakeTypeofVararg()
+        elseif N === nothing
+            FakeTypeofVararg(T)
+        else
+            FakeTypeofVararg(T, N)
+        end
+    elseif t === UndefHeader
+        nothing
     elseif t === MethodStoreHeader
         name = read(io)
         mod = read(io)
