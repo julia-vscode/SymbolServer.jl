@@ -1,6 +1,9 @@
 module CacheStore
-using ..SymbolServer: VarRef, FakeTypeName, FakeTypeofBottom, FakeTypeVar, FakeUnion, FakeUnionAll, FakeTypeofVararg
+using ..SymbolServer: VarRef, FakeTypeName, FakeTypeofBottom, FakeTypeVar, FakeUnion, FakeUnionAll
 using ..SymbolServer: ModuleStore, Package, FunctionStore, MethodStore, DataTypeStore, GenericStore
+@static if !(Vararg isa Type)
+    using ..SymbolServer: FakeTypeofVararg
+end
 
 const NothingHeader = 0x01
 const SymbolHeader = 0x02
