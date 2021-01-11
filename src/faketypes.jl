@@ -134,7 +134,8 @@ Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
     end
     function FakeTypeofVararg(va::Core.TypeofVararg)
         if isdefined(va, :N)
-            FakeTypeofVararg(FakeTypeName(va.T; justname=true), va.N)
+            vaN = va.N isa TypeVar ? FakeTypeVar(va.N) : va.N
+            FakeTypeofVararg(FakeTypeName(va.T; justname=true), vaN) # This should be FakeTypeName(va.N) but seems to crash inference.
         elseif isdefined(va, :T)
             FakeTypeofVararg(FakeTypeName(va.T; justname=true))
         else

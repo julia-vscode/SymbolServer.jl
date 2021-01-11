@@ -111,14 +111,18 @@ for (pk_name, uuid) in toplevel_pkgs
 
     if isfile(cache_path)
         if is_package_deved(ctx.env.manifest, uuid)
-            cached_version = open(cache_path) do io
-                CacheStore.read(io)
-            end
-            if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
-                @info "Outdated sha, will recache package $pk_name ($uuid)"
-                push!(packages_to_load, uuid)
-            else
-                @info "Package $pk_name ($uuid) is cached."
+            try
+                cached_version = open(cache_path) do io
+                    CacheStore.read(io)
+                end
+                if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
+                    @info "Outdated sha, will recache package $pk_name ($uuid)"
+                    push!(packages_to_load, uuid)
+                else
+                    @info "Package $pk_name ($uuid) is cached."
+                end
+            catch err
+                @info "Couldn't load $pk_name ($uuid) from file, will recache."
             end
         else
             @info "Package $pk_name ($uuid) is cached."
