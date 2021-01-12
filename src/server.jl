@@ -27,12 +27,14 @@ end
 # Make sure we can load stdlibs
 !in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib")
 
-using Serialization, Pkg, SHA
+using Pkg, SHA
 using Base: UUID
 
 include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
+include("serialize.jl")
+using .CacheStore
 
 store_path = length(ARGS) > 0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
@@ -55,6 +57,7 @@ server = Server(store_path, ctx, Dict{UUID,Package}())
 function load_package(c::Pkg.Types.Context, uuid, conn)
     isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
     pe_name = packagename(c, uuid)
+
     pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
     if pid in keys(Base.loaded_modules)
         conn !== nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")
@@ -74,7 +77,7 @@ end
 
 function write_cache(name, pkg)
     open(joinpath(server.storedir, name), "w") do io
-        serialize(io, pkg)
+        CacheStore.write(io, pkg)
     end
 end
 
@@ -96,6 +99,7 @@ written_caches = String[]
 toplevel_pkgs = deps(project(ctx))
 packages_to_load = []
 # Next make sure the cache is up-to-date for all of these
+
 for (pk_name, uuid) in toplevel_pkgs
     file_name = get_filename_from_name(ctx.env.manifest, uuid)
     # We sometimes have UUIDs in the project file that are not in the
@@ -107,14 +111,18 @@ for (pk_name, uuid) in toplevel_pkgs
 
     if isfile(cache_path)
         if is_package_deved(ctx.env.manifest, uuid)
-            cached_version = open(cache_path) do io
-                deserialize(io)
-            end
-            if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
-                @info "Outdated sha, will recache package $pk_name ($uuid)"
-                push!(packages_to_load, uuid)
-            else
-                @info "Package $pk_name ($uuid) is cached."
+            try
+                cached_version = open(cache_path) do io
+                    CacheStore.read(io)
+                end
+                if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
+                    @info "Outdated sha, will recache package $pk_name ($uuid)"
+                    push!(packages_to_load, uuid)
+                else
+                    @info "Package $pk_name ($uuid) is cached."
+                end
+            catch err
+                @info "Couldn't load $pk_name ($uuid) from file, will recache."
             end
         else
             @info "Package $pk_name ($uuid) is cached."
@@ -145,7 +153,7 @@ for (pid, m) in Base.loaded_modules
     end
 end
 
-symbols(env_symbols, nothing, SymbolServer.getallns(), visited)
+symbols(env_symbols, nothing, getallns(), visited)
 
 # Wrap the `ModuleStore`s as `Package`s.
 for (pkg_name, cache) in env_symbols
@@ -153,7 +161,7 @@ for (pkg_name, cache) in env_symbols
     !isinmanifest(ctx, pkg_name) && continue
     uuid = packageuuid(ctx, String(pkg_name))
     pe = frommanifest(ctx, uuid)
-    server.depot[uuid] = Package(String(pkg_name), cache, version(pe), uuid, sha_pkg(pe))
+    server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(pe))
 end
 
 # Write to disc

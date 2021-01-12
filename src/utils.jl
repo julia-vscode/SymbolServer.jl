@@ -352,6 +352,8 @@ unsorted_names(m::Module; all::Bool=false, imported::Bool=false) =
 # - its care to protect against circular depenency graphs
 # When you don't need to worry about cycles, you can do much better by defining your own function.
 
+recursive_copy(x) = deepcopy(x)
+
 recursive_copy(::Nothing) = nothing
 
 recursive_copy(s::Symbol) = s
@@ -398,7 +400,6 @@ recursive_copy(m::ModuleStore) = ModuleStore(recursive_copy(m.name), recursive_c
 
 recursive_copy(p::Package) = Package(p.name,
                                      recursive_copy(p.val),
-                                     recursive_copy(p.ver),
                                      p.uuid,
                                      recursive_copy(p.sha))
 
@@ -429,3 +430,34 @@ recursive_copy(gs::GenericStore) = GenericStore(recursive_copy(gs.name),
                                                 recursive_copy(gs.typ),
                                                 gs.doc,
                                                 gs.exported)
+
+
+# Tools for modifying source location
+# env = getenvtree([:somepackage])
+# symbols(env, somepackage)
+# m = env[:somepackage]
+# To strip actual src path:
+# modify_dirs(m, f -> modify_dir(f, pkg_src_dir(somepackage), "PLACEHOLDER"))
+# To replace the placeholder:
+# modify_dirs(m, f -> modify_dir(f, "PLACEHOLDER", new_src_dir))
+function modify_dirs(m::ModuleStore, f)
+    for (k, v) in m.vals
+        if v isa FunctionStore
+            m.vals[k] = FunctionStore(v.name, MethodStore[MethodStore(m.name, m.mod, f(m.file), m.line, m.sig, m.kws, m.rt) for m in v.methods], v.doc, v.extends, v.exported)
+        elseif v isa DataTypeStore
+            m.vals[k] = DataTypeStore(v.name, v.super, v.parameters, v.types, v.fieldnames, MethodStore[MethodStore(m.name, m.mod, f(m.file), m.line, m.sig, m.kws, m.rt) for m in v.methods], v.doc, v.exported)
+        elseif v isa ModuleStore
+            modify_dirs(v, f)
+        end
+    end
+end
+
+pkg_src_dir(m::Module) = dirname(pathof(m))
+    
+
+
+# replace s1 with s2 at the start of a string
+function modify_dir(f, s1, s2)
+    @assert startswith(f, s1)
+    string(s2, f[length(s1)+1:end])
+end
