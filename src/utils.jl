@@ -352,6 +352,8 @@ unsorted_names(m::Module; all::Bool=false, imported::Bool=false) =
 # - its care to protect against circular depenency graphs
 # When you don't need to worry about cycles, you can do much better by defining your own function.
 
+recursive_copy(x) = deepcopy(x)
+
 recursive_copy(::Nothing) = nothing
 
 recursive_copy(s::Symbol) = s
