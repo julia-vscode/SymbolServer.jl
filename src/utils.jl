@@ -358,6 +358,8 @@ recursive_copy(::Nothing) = nothing
 
 recursive_copy(s::Symbol) = s
 
+recursive_copy(c::Char) = c
+
 recursive_copy(str::String) = str
 
 recursive_copy(x::Number) = x
