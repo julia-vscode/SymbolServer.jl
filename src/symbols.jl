@@ -26,11 +26,10 @@ const EnvStore = Dict{Symbol,ModuleStore}
 struct Package
     name::String
     val::ModuleStore
-    ver::Any
     uuid::Base.UUID
-    sha
+    sha::Union{Vector{UInt8},Nothing}
 end
-Package(name::String, val::ModuleStore, ver, uuid::String, sha) = Package(name, val, ver, Base.UUID(uuid), sha)
+Package(name::String, val::ModuleStore, uuid::String, sha) = Package(name, val, Base.UUID(uuid), sha)
 
 struct MethodStore
     name::Symbol
@@ -150,7 +149,17 @@ function methodlist(@nospecialize(f))
     Method[x[3]::Method for x in ms]
 end
 
-function cache_methods(@nospecialize(f), name, env)
+function sparam_syms(meth::Method)
+    s = Symbol[]
+    sig = meth.sig
+    while sig isa UnionAll
+        push!(s, Symbol(sig.var.name))
+        sig = sig.body
+    end
+    return s
+end
+
+function cache_methods(@nospecialize(f), name, env, get_return_type)
     if isa(f, Core.Builtin)
         return MethodStore[]
     end
@@ -165,8 +174,23 @@ function cache_methods(@nospecialize(f), name, env)
     ind_of_method_w_kws = Int[] # stores the index of methods with kws.
     i = 1
     for m in methods0
+        # Get inferred method return type
+        if get_return_type
+            sparams = Core.svec(sparam_syms(m[3])...)
+            rt = try 
+                @static if isdefined(Core.Compiler, :NativeInterpreter)
+                Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
+            else
+                Core.Compiler.typeinf_type(m[3], m[3].sig, sparams, Core.Compiler.Params(world))
+            end
+            catch e
+                Any
+            end
+        else
+            rt = Any
+        end
         file = maybe_fix_path(String(m[3].file))
-        MS = MethodStore(m[3].name, nameof(m[3].module), file, m[3].line, [], Symbol[], FakeTypeName(Any))
+        MS = MethodStore(m[3].name, nameof(m[3].module), file, m[3].line, [], Symbol[], FakeTypeName(rt))
         # Get signature
         sig = Base.unwrap_unionall(m[1])
         argnames = getargnames(m[3])
@@ -376,7 +400,7 @@ function all_names(m, pred, symbols = Set(Symbol[]), seen = Set(Module[]))
     symbols
 end
 
-function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Base.IdSet{Symbol} = getallns(), visited = Base.IdSet{Module}())
+function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Base.IdSet{Symbol} = getallns(), visited = Base.IdSet{Module}();  get_return_type = false)
     if m isa Module
         cache = _lookup(VarRef(m), env, true)
         cache === nothing && return
@@ -388,11 +412,11 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
             if Base.unwrap_unionall(x) isa DataType # Unions aren't handled here.
                 if parentmodule((x)) === m
                     cache[s] = DataTypeStore(x, m, s in getnames(m))
-                    cache_methods(x, s, env)
+                    cache_methods(x, s, env, get_return_type)
                 elseif nameof(x) !== s
                     # This needs some finessing.
                     cache[s] = DataTypeStore(x, m, s in getnames(m))
-                    cache_methods(x, s, env)
+                    cache_methods(x, s, env, get_return_type)
                 else
                     # These are imported variables that are reexported.
                     cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
@@ -400,7 +424,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
             elseif x isa Function
                 if parentmodule(x) === m || (x isa Core.IntrinsicFunction && m === Core.Intrinsics)
                     cache[s] = FunctionStore(x, m, s in getnames(m))
-                    cache_methods(x, s, env)
+                    cache_methods(x, s, env, get_return_type)
                 elseif !haskey(cache, s)
                     # This will be replaced at a later point by a FunctionStore if methods for `x` are defined within `m`.
                     if x isa Core.IntrinsicFunction
@@ -437,7 +461,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
 end
 
 
-function load_core()
+function load_core(; get_return_type = false)
     c = Pkg.Types.Context()
     cache = getenvtree([:Core,:Base])
     symbols(cache)
@@ -526,10 +550,10 @@ function load_core()
         true)
     push!(cache[:Core].exportednames, :ccall)
     cache[:Core][Symbol("@__doc__")] = FunctionStore(VarRef(VarRef(Core), Symbol("@__doc__")), [], "", VarRef(VarRef(Core), Symbol("@__doc__")), true)
-    cache_methods(getfield(Core, Symbol("@__doc__")), Symbol("@__doc__"), cache)
+    cache_methods(getfield(Core, Symbol("@__doc__")), Symbol("@__doc__"), cache, false)
     # Accounts for the dd situation where Base.rand only has methods from Random which doesn't appear to be explicitly used.
     # append!(cache[:Base][:rand].methods, cache_methods(Base.rand, cache))
-    for m in cache_methods(Base.rand, :rand, cache)
+    for m in cache_methods(Base.rand, :rand, cache, get_return_type)
         push!(cache[:Base][:rand].methods, m[2])
     end
 
@@ -557,7 +581,7 @@ function collect_extended_methods(mod::ModuleStore, extendeds, mname)
     end
 end
 
-getallns() = let allns = Base.IdSet{Symbol}(); SymbolServer.oneverything((m, s, x, state) -> push!(allns, s)); allns end
+getallns() = let allns = Base.IdSet{Symbol}(); oneverything((m, s, x, state) -> push!(allns, s)); allns end
 
 """
     split_module_names(m::Module, allns)

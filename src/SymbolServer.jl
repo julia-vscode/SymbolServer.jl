@@ -2,13 +2,15 @@ module SymbolServer
 
 export SymbolServerInstance, getstore
 
-using Serialization, Pkg, SHA
+using Pkg, SHA
 using Base: UUID, Process
 import Sockets, UUIDs
 
 include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
+include("serialize.jl")
+using .CacheStore
 
 mutable struct SymbolServerInstance
     process::Union{Nothing,Base.Process}
@@ -169,7 +171,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     if isfile(cache_path)
         try
             package_data = open(cache_path) do io
-                deserialize(io)
+                CacheStore.read(io)
             end
             store[Symbol(pe_name)] = package_data.val
             for dep in deps(pe)
