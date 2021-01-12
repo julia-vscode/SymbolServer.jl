@@ -457,5 +457,5 @@ pkg_src_dir(m::Module) = dirname(pathof(m))
 # replace s1 with s2 at the start of a string
 function modify_dir(f, s1, s2)
     @assert startswith(f, s1)
-    string(s2, f[length(s1)+1:end])
+    string(s2, f[length(s1) + 1:end])
 end

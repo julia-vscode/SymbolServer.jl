@@ -169,7 +169,7 @@ function write_vector(io, x)
     end
 end
 
-function read(io, t = Base.read(io, UInt8))
+function read(io, t=Base.read(io, UInt8))
     if t === VarRefHeader
         VarRef(read(io), read(io))
     elseif t === NothingHeader
@@ -217,7 +217,7 @@ function read(io, t = Base.read(io, UInt8))
         nsig = Base.read(io, Int)
         sig = Any[]
         for i = 1:nsig
-            push!(sig, read(io)=>read(io))
+            push!(sig, read(io) => read(io))
         end
         kws = read_vector(io, Symbol)
         rt = read(io)
@@ -248,7 +248,7 @@ function read(io, t = Base.read(io, UInt8))
         false
     elseif t === TupleHeader
         N = Base.read(io, Int)
-        ntuple(i->read(io), N)
+        ntuple(i -> read(io), N)
     elseif t === PackageHeader
         name = read(io)
         val = read(io)
