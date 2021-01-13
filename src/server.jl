@@ -109,6 +109,13 @@ for (pk_name, uuid) in toplevel_pkgs
     file_name === nothing && continue
     cache_path = joinpath(server.storedir, file_name)
 
+    if !is_package_deved(ctx.env.manifest, uuid) && cloud_has_file(file_name)
+        cfile = get_file_from_cloud(uuid, file_name)
+        if cfile !== false
+            CacheStore.write(open(cache_path), cfile)
+        end
+    end
+    
     if isfile(cache_path)
         if is_package_deved(ctx.env.manifest, uuid)
             try

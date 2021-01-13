@@ -452,6 +452,8 @@ function modify_dirs(m::ModuleStore, f)
     end
 end
 
+
+
 pkg_src_dir(m::Module) = dirname(pathof(m))
     
 
@@ -460,4 +462,32 @@ pkg_src_dir(m::Module) = dirname(pathof(m))
 function modify_dir(f, s1, s2)
     @assert startswith(f, s1)
     string(s2, f[length(s1)+1:end])
+end
+
+
+# tools to retrieve cache from the cloud
+function cloud_has_file(cache_name)
+    return false # Do we need to do an initial check or should we just try and get the file?
+end
+
+function get_file_from_cloud(uuid, cache_name)
+    file = try
+        download(joinpath("https://symbolcache.julia-vscode.org", cache_name)) # How do we get the file?
+    catch e
+        @info "Couldn't retrieve cache file."
+        return false
+    end
+    cache = try
+        CacheStore.read(open(file))
+    catch e
+        @info "Couldn't unpack cache file."
+    end
+    pkg_path = Base.find_package(Base.UUID(uuid))
+    if pkg_path === nothing || !isfile(pkg_path)
+        @info "Couldn't find package on disc."
+        return false
+    end
+
+    modify_dirs(cache, f -> modify_dir(f, "PLACEHOLDER", dirname(pkg_path)))
+    return cache
 end
