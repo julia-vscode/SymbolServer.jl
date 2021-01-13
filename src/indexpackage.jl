@@ -8,6 +8,9 @@ current_package_treehash = ARGS[4]
 
 @info "Indexing package $current_package_name $current_package_version..."
 
+# This path will always be mounted in the docker container in which we are running
+store_path = "/symcache"
+
 current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
 cache_package_folder_path = joinpath(store_path, "v1", "packages", "$(current_package_name)_$current_package_uuid")
 cache_path = joinpath(cache_package_folder_path, "v$(current_package_versionwithoutplus)_$current_package_treehash.jstore")
@@ -15,7 +18,7 @@ cache_path = joinpath(cache_package_folder_path, "v$(current_package_versionwith
 mkpath(cache_package_folder_path)
 
 module LoadingBay end
-Pkg.add(name=current_package_name, version=current_package_version)
+Pkg.add(name=string(current_package_name), version=current_package_version)
 
 # TODO Make the code below ONLY write a cache file for the package we just added here.
 include("faketypes.jl")
@@ -23,9 +26,6 @@ include("symbols.jl")
 include("utils.jl")
 include("serialize.jl")
 using .CacheStore
-
-# This path will always be mounted in the docker container in which we are running
-store_path = "/symcache"
 
 # Load package
 m = try
