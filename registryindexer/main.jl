@@ -91,13 +91,13 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
     if isfile(cache_path)
         global count_already_cached += 1
     else
-        res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.treehash)`)
+        res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-        open(joinpath(cache_folder, "logs", "log_$(v.name)_$(versionwithoutplus)_stdout.txt"), "w") do f
+        open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
             print(f, res.stdout)
         end
 
-        open(joinpath(cache_folder, "logs", "log_$(v.name)_$(versionwithoutplus)_stderr.txt"), "w") do f
+        open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
             print(f, res.stderr)
         end
 
