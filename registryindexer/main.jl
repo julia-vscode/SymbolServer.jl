@@ -53,7 +53,7 @@ all_packages = get_all_package_versions()
 
 flattened_packageversions = get_flattened_package_versions(all_packages)
 
-cache_folder = joinpath(@__DIR__, "..", "registryindexcache")
+cache_folder = length(ARGS)>0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
 
 mkpath(joinpath(cache_folder, "logs"))
 
