@@ -32,7 +32,7 @@ ctx = Pkg.Types.Context()
 uuid = SymbolServer.packageuuid(ctx, current_package_name)
 mkpath(joinpath(store_path, "v1", "packages", "$(current_package_name)_$uuid"))
 versionwithoutplus = replace(string(current_package_version), '+'=>'_')
-cache_path = joinpath(store_path, "v1", "packages", "$(current_package_name)_$uuid", "v_$(versionwithoutplus)_$current_package_treehash.jstore")
+cache_path = joinpath(store_path, "v1", "packages", "$(current_package_name)_$uuid", "v$(versionwithoutplus)_$current_package_treehash.jstore")
 open(cache_path, "w") do io
     SymbolServer.CacheStore.write(io, SymbolServer.Package(current_package_name, env[Symbol(current_package_name)], uuid, nothing))
 end

@@ -1,5 +1,5 @@
-max_n = 10
-max_tasks = 4
+max_n = 1_000_000
+max_tasks = 36
 
 using Pkg, UUIDs
 
@@ -86,7 +86,7 @@ count_successfully_cached = 0
 asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
-    cache_path = joinpath(cache_folder, "v1", "packages", "$(v.name)_$(v.uuid)", "v_$(versionwithoutplus)_$(v.treehash).jstore")
+    cache_path = joinpath(cache_folder, "v1", "packages", "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).jstore")
 
     if isfile(cache_path)
         global count_already_cached += 1
@@ -103,7 +103,7 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
 
         if res.code==-10
             global count_failed_to_load += 1
-            open(joinpath(cache_folder, "v1", "packages", "$(v.name)_$(v.uuid)", "v_$(versionwithoutplus)_$(v.treehash).failed.txt"), "w") do f
+            open(joinpath(cache_folder, "v1", "packages", "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).failed.txt"), "w") do f
                 print(f, "Could not load the package.")
             end
         else
