@@ -2,4 +2,5 @@
 *.jl.*.cov
 *.jl.mem
 .vscode
-Manifest.toml
+./Manifest.toml
+registryindexcache
