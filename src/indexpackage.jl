@@ -49,7 +49,7 @@ modify_dirs(env[current_package_name], f -> modify_dir(f, pkg_src_dir(Base.loade
 
 # Write them to a file
 open(cache_path, "w") do io
-    CacheStore.write(io, Package(current_package_name, env[current_package_name], current_package_uuid, nothing))
+    CacheStore.write(io, Package(string(current_package_name), env[current_package_name], current_package_uuid, nothing))
 end
 
 @info "Finished indexing."
