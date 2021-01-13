@@ -1,9 +1,12 @@
-max_n = 20
+max_n = 1_000_000
+max_tasks = 36
 
-using Pkg, UUIDs, ProgressMeter
+using Pkg, UUIDs
 
 Pkg.activate(@__DIR__)
 Pkg.instantiate()
+
+using ProgressMeter
 
 function get_all_package_versions()
     registry_folder_path = joinpath(homedir(), ".julia", "registries", "General")
@@ -55,7 +58,7 @@ cache_folder = joinpath(@__DIR__, "..", "registryindexcache")
 
 p = Progress(min(max_n, length(flattened_packageversions)), 1)
 
-asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=5) do v
+asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do v
     res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version)`)
 
     versionwithoutplus = replace(string(v.version), '+'=>'_')
