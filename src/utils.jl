@@ -472,7 +472,8 @@ end
 
 function get_file_from_cloud(uuid, cache_name)
     file = try
-        download(joinpath("https://symbolcache.julia-vscode.org", cache_name)) # How do we get the file?
+        file = download(joinpath("https://symbolcache.julia-vscode.org", cache_name)) # How do we get the file?
+        file = unzip(file)
     catch e
         @info "Couldn't retrieve cache file."
         return false
