@@ -8,6 +8,8 @@ using Base: UUID
 
 Pkg.add(name=ARGS[1], version=VersionNumber(ARGS[2]))
 
+# TODO Make the code below ONLY write a cache file for the package we just added here.
+
 include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
