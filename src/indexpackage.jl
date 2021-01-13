@@ -1,3 +1,5 @@
+module SymbolServer
+
 using Pkg, SHA
 using Base: UUID
 
@@ -51,3 +53,5 @@ open(cache_path, "w") do io
 end
 
 @info "Finished indexing."
+
+end
