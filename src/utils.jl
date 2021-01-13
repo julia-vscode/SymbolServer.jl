@@ -76,6 +76,7 @@ function isinmanifest end
     deps(pe::PackageEntry) = get(pe[1], "deps", Dict{String,Any}())
     path(pe::PackageEntry) = get(pe[1], "path", nothing)
     version(pe::PackageEntry) = get(pe[1], "version", nothing)
+    tree_hash(pe) = get(pe.other, "git-tree-sha1", nothing)
 
     function frommanifest(c::Pkg.Types.Context, uuid)
         for (n, p) in c.env.manifest
@@ -146,6 +147,7 @@ else
     version(pe::PackageEntry) = pe.version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID,PackageEntry}, uuid) = manifest[uuid]
+    tree_hash(pe) = tree_hash = VERSION >= v"1.3" ? pe.tree_hash : get(pe.other, "git-tree-sha1", nothing)
 
     function get_filename_from_name(manifest, uuid)
         haskey(manifest, uuid) || return nothing
@@ -470,9 +472,10 @@ function cloud_has_file(cache_name)
     return false # Do we need to do an initial check or should we just try and get the file?
 end
 
-function get_file_from_cloud(uuid, cache_name)
+function get_file_from_cloud(uuid, cache_name, version, tree_hash)
     file = try
-        file = download(joinpath("https://symbolcache.julia-vscode.org", cache_name)) # How do we get the file?
+        versionwithoutplus = replace(string(version), '+'=>'_')
+        file = download(joinpath("https://symbolcache.julia-vscode.org", "v1", "packages", "$(cache_name)_$uuid", "v$(version)_$tree_hash.jstore")) # How do we get the file?
         file = unzip(file)
     catch e
         @info "Couldn't retrieve cache file."

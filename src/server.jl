@@ -108,9 +108,10 @@ for (pk_name, uuid) in toplevel_pkgs
     # packages
     file_name === nothing && continue
     cache_path = joinpath(server.storedir, file_name)
+    pe = ctx.env.manifest[uuid]
 
     if !isfile(cache_path) && !is_package_deved(ctx.env.manifest, uuid) && cloud_has_file(file_name)
-        cfile = get_file_from_cloud(uuid, file_name)
+        cfile = get_file_from_cloud(uuid, file_name, version(pe), tree_hash(pe))
         if cfile !== false
             CacheStore.write(open(cache_path), cfile)
         end
