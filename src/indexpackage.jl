@@ -38,7 +38,7 @@ m = try
     getfield(LoadingBay, current_package_name)
 catch e
     @info "Could not load package, exiting."
-    exit(-10)
+    exit(10)
 end
 
 # Get the symbols

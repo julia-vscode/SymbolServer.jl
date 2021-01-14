@@ -7,7 +7,9 @@ using Pkg, UUIDs
 Pkg.activate(@__DIR__)
 Pkg.instantiate()
 
-using ProgressMeter, Query
+using ProgressMeter, Query, JSON
+
+Pkg.PlatformEngines.probe_platform_engines!()
 
 function get_all_package_versions(;max_versions=typemax(Int))
     registry_folder_path = joinpath(homedir(), ".julia", "registries", "General")
@@ -88,6 +90,10 @@ count_successfully_cached = 0
 
 @info "There are $(length(flattened_packageversions)) package/version combinations that need to be indexed. We will index at most $max_n."
 
+statusdb_filename = joinpath(cache_folder, "statusdb.json")
+
+status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
+
 asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
@@ -98,19 +104,30 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
     else
         res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-        # open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
-        #     print(f, res.stdout)
-        # end
-
-        # open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
-        #     print(f, res.stderr)
-        # end
-
-        if res.code==-10
+        if res.code==10
             global count_failed_to_load += 1
-            open(joinpath(cache_folder, "v1", "packages", "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).failed.txt"), "w") do f
-                print(f, "Could not load the package.")
+
+            mktempdir() do path
+                error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
+
+                # Write them to a file
+                open(joinpath(path, error_filename), "w") do io                    
+                end
+            
+                Pkg.PlatformEngines.package(path, cache_path)
             end
+
+            open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+                print(f, res.stdout)
+            end
+
+            open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+                print(f, res.stderr)
+            end
+
+            global status_db
+
+            push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "success"=>false, "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
         else
             global count_successfully_cached += 1
         end
@@ -119,3 +136,6 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
     next!(p, showvalues = [(:finished_package_count,p.counter+1), (:count_failed_to_load, count_failed_to_load), (:count_already_cached, count_already_cached), (:count_successfully_cached, count_successfully_cached)])
 end
 
+open(joinpath(cache_folder, "statusdb.json"), "w") do f
+    JSON.print(f, status_db, 4)
+end
