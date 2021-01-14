@@ -128,7 +128,7 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
             global status_db
 
             push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "success"=>false, "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
-        else if res.code==0
+        elseif res.code==0
             global count_successfully_cached += 1
         else
             @warn "We got a non zero return code from docker, still need to handle that case properly."
