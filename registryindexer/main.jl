@@ -1,4 +1,5 @@
 max_n = 1_000_000
+max_versions = 2
 max_tasks = 36
 
 using Pkg, UUIDs
@@ -8,7 +9,7 @@ Pkg.instantiate()
 
 using ProgressMeter, Query
 
-function get_all_package_versions()
+function get_all_package_versions(;max_versions=typemax(Int))
     registry_folder_path = joinpath(homedir(), ".julia", "registries", "General")
     registry_path = joinpath(registry_folder_path, "Registry.toml")
 
@@ -21,7 +22,11 @@ function get_all_package_versions()
             path = _[2]["path"]
         }) |>
         @mutate(
-            versions = Pkg.TOML.parsefile(joinpath(registry_folder_path, _.path, "Versions.toml")) |> @map(i->{version=VersionNumber(i[1]), treehash=i[2]["git-tree-sha1"]}) |> collect
+            versions = (Pkg.TOML.parsefile(joinpath(registry_folder_path, _.path, "Versions.toml")) |>
+                @map(i->{version=VersionNumber(i[1]), treehash=i[2]["git-tree-sha1"]}) |> 
+                @orderby_descending(i->i.version) |>
+                @take(max_versions) |>
+                collect)
         ) |>
         collect
 
@@ -49,7 +54,7 @@ function execute(cmd::Base.Cmd)
             code = process.exitcode)
 end
 
-all_packages = get_all_package_versions()
+all_packages = get_all_package_versions(max_versions=max_versions)
 
 flattened_packageversions = get_flattened_package_versions(all_packages)
 
