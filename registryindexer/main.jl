@@ -91,7 +91,7 @@ count_successfully_cached = 0
 asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
-    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).jstore")
+    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
     if isfile(cache_path)
         global count_already_cached += 1
