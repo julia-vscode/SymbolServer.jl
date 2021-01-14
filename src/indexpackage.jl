@@ -14,7 +14,7 @@ current_package_treehash = ARGS[4]
 store_path = "/symcache"
 
 current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
-cache_package_folder_path = joinpath(store_path, "v1", "packages", "$(current_package_name)_$current_package_uuid")
+cache_package_folder_path = joinpath(store_path, "v1", "packages", string(uppercase(string(current_package_name)[1])), "$(current_package_name)_$current_package_uuid")
 filename_without_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash"
 filename_with_extension = "$filename_without_extension.jstore"
 cache_path = joinpath(cache_package_folder_path, filename_with_extension)
@@ -58,7 +58,7 @@ mktempdir() do path
         CacheStore.write(io, Package(string(current_package_name), env[current_package_name], current_package_uuid, nothing))
     end
 
-    cp(joinpath(path, filename_with_extension), cache_path)
+    # cp(joinpath(path, filename_with_extension), cache_path)
     Pkg.PlatformEngines.package(path, cache_path_compressed)
 end
 

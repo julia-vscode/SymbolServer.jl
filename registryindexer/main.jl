@@ -91,20 +91,20 @@ count_successfully_cached = 0
 asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
-    cache_path = joinpath(cache_folder, "v1", "packages", "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).jstore")
+    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).jstore")
 
     if isfile(cache_path)
         global count_already_cached += 1
     else
         res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-        open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
-            print(f, res.stdout)
-        end
+        # open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+        #     print(f, res.stdout)
+        # end
 
-        open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
-            print(f, res.stderr)
-        end
+        # open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+        #     print(f, res.stderr)
+        # end
 
         if res.code==-10
             global count_failed_to_load += 1
