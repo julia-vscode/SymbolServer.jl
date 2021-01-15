@@ -23,7 +23,13 @@ cache_path_compressed = joinpath(cache_package_folder_path, "$filename_without_e
 mkpath(cache_package_folder_path)
 
 module LoadingBay end
-Pkg.add(name=string(current_package_name), version=current_package_version)
+
+try
+    Pkg.add(name=string(current_package_name), version=current_package_version)
+catch err
+    @info "Could not install package, exiting"
+    exit(20)
+end
 
 # TODO Make the code below ONLY write a cache file for the package we just added here.
 include("faketypes.jl")

@@ -62,7 +62,11 @@ flattened_packageversions = get_flattened_package_versions(all_packages)
 
 cache_folder = length(ARGS)>0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
 
+rm(joinpath(cache_folder, "logs"), force=true, recursive=true)
 mkpath(joinpath(cache_folder, "logs"))
+mkpath(joinpath(cache_folder, "logs", "packageloadfailure"))
+mkpath(joinpath(cache_folder, "logs", "packageinstallfailure"))
+mkpath(joinpath(cache_folder, "logs", "packageindexfailure"))
 
 @info "Building docker image..."
 
@@ -85,6 +89,8 @@ end
 p = Progress(min(max_n, length(flattened_packageversions)), 1)
 
 count_failed_to_load = 0
+count_failed_to_index = 0
+count_failed_to_install = 0
 count_already_cached = 0
 count_successfully_cached = 0
 
@@ -104,8 +110,12 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
     else
         res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-        if res.code==10
-            global count_failed_to_load += 1
+        if res.code==10 || res.code==20
+            if res.code==10
+                global count_failed_to_load += 1
+            elseif res.code==20
+                global count_failed_to_install += 1
+            end
 
             mktempdir() do path
                 error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
@@ -117,25 +127,39 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
                 Pkg.PlatformEngines.package(path, cache_path)
             end
 
-            open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+            open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
                 print(f, res.stdout)
             end
 
-            open(joinpath(cache_folder, "logs", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+            open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
                 print(f, res.stderr)
             end
 
             global status_db
 
-            push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "success"=>false, "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
+            push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : "load_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
         elseif res.code==0
             global count_successfully_cached += 1
         else
-            @warn "We got a non zero return code from docker, still need to handle that case properly."
+            global count_failed_to_index += 1
+            open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+                print(f, res.stdout)
+            end
+
+            open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+                print(f, res.stderr)
+            end
         end
     end
 
-    next!(p, showvalues = [(:finished_package_count,p.counter+1), (:count_failed_to_load, count_failed_to_load), (:count_already_cached, count_already_cached), (:count_successfully_cached, count_successfully_cached)])
+    next!(p, showvalues = [
+        (:finished_package_count,p.counter+1),
+        (:count_already_cached, count_already_cached),
+        (:count_successfully_cached, count_successfully_cached),
+        (:count_failed_to_install, count_failed_to_install),
+        (:count_failed_to_load, count_failed_to_load),
+        (:count_failed_to_index, count_failed_to_index),
+    ])
 end
 
 open(joinpath(cache_folder, "statusdb.json"), "w") do f
