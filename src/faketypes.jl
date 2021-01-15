@@ -16,7 +16,7 @@ end
 
 function FakeTypeName(@nospecialize(x); justname=false)
     @static if !(Vararg isa Type)
-        x isa Core.TypeofVararg && return FakeTypeofVararg(x)
+        x isa typeof(Vararg) && return FakeTypeofVararg(x)
     end
     if x isa DataType
         xname = x.name
@@ -132,7 +132,7 @@ Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
         FakeTypeofVararg(T) = (new(T))
         FakeTypeofVararg(T, N) = new(T, N)
     end
-    function FakeTypeofVararg(va::Core.TypeofVararg)
+    function FakeTypeofVararg(va::typeof(Vararg))
         if isdefined(va, :N)
             vaN = va.N isa TypeVar ? FakeTypeVar(va.N) : va.N
             FakeTypeofVararg(FakeTypeName(va.T; justname=true), vaN) # This should be FakeTypeName(va.N) but seems to crash inference.
