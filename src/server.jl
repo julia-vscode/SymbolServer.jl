@@ -110,6 +110,8 @@ for (uuid, pe) in missing_pkgs
     end
 end
 
+# sucs = asyncmap((uuid,pe) -> SymbolServer.get_file_from_cloud(ctx, uuid, pe, server.storedir, server.storedir), missing_pkgs, ntasks = 10)
+
 for (pk_name, uuid) in toplevel_pkgs
     file_name = get_filename_from_name(ctx.env.manifest, uuid)
     # We sometimes have UUIDs in the project file that are not in the
