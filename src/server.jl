@@ -100,6 +100,16 @@ toplevel_pkgs = deps(project(ctx))
 packages_to_load = []
 # Next make sure the cache is up-to-date for all of these
 
+missing_pkgs = validate_disc_store(server.storedir, ctx.env.manifest)
+for (uuid, pe) in missing_pkgs
+    suc = SymbolServer.get_file_from_cloud(ctx, uuid, pe, server.storedir, server.storedir)
+    if suc
+        conn !== nothing && println(conn, "STARTLOAD;$(pe.name) downloaded! 😃;$uuid;noversion")
+    else
+        conn !== nothing && println(conn, "STARTLOAD;$(pe.name) did not download 😕;$uuid;noversion")
+    end
+end
+
 for (pk_name, uuid) in toplevel_pkgs
     file_name = get_filename_from_name(ctx.env.manifest, uuid)
     # We sometimes have UUIDs in the project file that are not in the
@@ -109,13 +119,6 @@ for (pk_name, uuid) in toplevel_pkgs
     file_name === nothing && continue
     cache_path = joinpath(server.storedir, file_name)
     pe = ctx.env.manifest[uuid]
-
-    if !isfile(cache_path) && !is_package_deved(ctx.env.manifest, uuid) && cloud_has_file(file_name)
-        cfile = get_file_from_cloud(uuid, file_name, version(pe), tree_hash(pe))
-        if cfile !== false
-            CacheStore.write(open(cache_path), cfile)
-        end
-    end
 
     if isfile(cache_path)
         if is_package_deved(ctx.env.manifest, uuid)

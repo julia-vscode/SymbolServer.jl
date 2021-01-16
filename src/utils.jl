@@ -145,9 +145,10 @@ else
     deps(pkg::Pair{String,UUID}, c::Pkg.Types.Context) = deps(packageuuid(pkg), c)
     path(pe::PackageEntry) = pe.path
     version(pe::PackageEntry) = pe.version
+    version(pe::Pair{UUID,PackageEntry}) = last(pe).version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID,PackageEntry}, uuid) = manifest[uuid]
-    tree_hash(pe) = tree_hash = VERSION >= v"1.3" ? pe.tree_hash : get(pe.other, "git-tree-sha1", nothing)
+    tree_hash(pe::PackageEntry) = VERSION >= v"1.3" ? pe.tree_hash : get(pe.other, "git-tree-sha1", nothing)
 
     function get_filename_from_name(manifest, uuid)
         haskey(manifest, uuid) || return nothing
@@ -468,15 +469,19 @@ end
 
 
 # tools to retrieve cache from the cloud
-function cloud_has_file(cache_name)
-    return false # Do we need to do an initial check or should we just try and get the file?
-end
 
-function get_file_from_cloud(uuid, cache_name, version, tree_hash)
+function get_file_from_cloud(ctx, uuid, pe, cache_dir = "../cache", download_dir = "../downloads/")
+    link = cloud_storage_address(uuid, pe)
+    unpacked_filename = last(splitpath(cloud_storage_address(uuid, pe, false)))
+    old_filename_format = get_filename_from_name(ctx.env.manifest, uuid)
     file = try
-        versionwithoutplus = replace(string(version), '+'=>'_')
-        file = download(joinpath("https://symbolcache.julia-vscode.org", "v1", "packages", "$(cache_name)_$uuid", "v$(version)_$tree_hash.jstore")) # How do we get the file?
-        file = unzip(file)
+        @info "Trying to download $(pe.name) cache from $link"
+        if Pkg.PlatformEngines.download_verify_unpack(cloud_storage_address(uuid, pe), nothing, joinpath(download_dir, first(splitext(unpacked_filename))))
+            get_filename_from_name(ctx.env.manifest, uuid)
+            mv(joinpath(download_dir, first(splitext(unpacked_filename)), unpacked_filename), joinpath(cache_dir, old_filename_format))
+            rm(joinpath(download_dir, first(splitext(unpacked_filename))), recursive = true)
+        end
+        joinpath(cache_dir, old_filename_format)
     catch e
         @info "Couldn't retrieve cache file."
         return false
@@ -484,14 +489,44 @@ function get_file_from_cloud(uuid, cache_name, version, tree_hash)
     cache = try
         CacheStore.read(open(file))
     catch e
-        @info "Couldn't unpack cache file."
+        @info "Couldn't read cache file, deleting."
+        rm(file)
+        return false
     end
-    pkg_path = Base.find_package(Base.UUID(uuid))
+    pkg_path = Base.locate_package(Base.PkgId(uuid, pe.name))
     if pkg_path === nothing || !isfile(pkg_path)
         @info "Couldn't find package on disc."
         return false
     end
 
-    modify_dirs(cache, f -> modify_dir(f, "PLACEHOLDER", dirname(pkg_path)))
-    return cache
+    modify_dirs(cache.val, f -> modify_dir(f, "PLACEHOLDER", dirname(pkg_path)))
+    CacheStore.write(open(file, "w"), cache)
+    @info "Successfully download, scrubbed and saved $(pe.name)"
+    return true
+end
+
+function cloud_storage_address(uuid, pe::PackageEntry, compressed = true)
+    web_address = "https://www.julia-vscode.org/symbolcache/store"
+    current_package_uuid = string(uuid)
+    current_package_name = pe.name
+    current_package_version = version(pe)
+    current_package_treehash = tree_hash(pe)
+
+    current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
+    cache_package_folder_path = joinpath(web_address, "v1", "packages", string(uppercase(string(current_package_name)[1])), "$(current_package_name)_$current_package_uuid")
+    filename_without_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash"
+    cache_path = joinpath(cache_package_folder_path, filename_without_extension)
+    
+    string(cache_path, compressed ? ".tar.gz" : ".jstore")
+end
+
+function validate_disc_store(store_path, manifest)
+    missing_cache_files = Dict()
+    for (uuid, pe) in manifest
+        file_name = SymbolServer.get_filename_from_name(manifest, uuid)
+        if !isfile(joinpath(store_path, file_name)) && !endswith(pe.name, "_jll") 
+            missing_cache_files[uuid] = pe
+        end
+    end
+    missing_cache_files
 end
