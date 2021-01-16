@@ -530,3 +530,34 @@ function validate_disc_store(store_path, manifest)
     end
     missing_cache_files
 end
+
+function get_pkg_path(pkg::Base.PkgId, env, depot_path)
+    project_file = Base.env_project_file(env)
+    manifest_file = Base.project_file_manifest_path(project_file)
+    
+    d = Base.parsed_toml(manifest_file)
+    entries = get(d, pkg.name, nothing)::Union{Nothing, Vector{Any}}
+    entries === nothing && return nothing # TODO: allow name to mismatch?
+    for entry in entries
+        entry = entry::Dict{String, Any}
+        uuid = get(entry, "uuid", nothing)::Union{Nothing, String}
+        uuid === nothing && continue
+        if UUID(uuid) === pkg.uuid
+            path = get(entry, "path", nothing)::Union{Nothing, String}
+            if path !== nothing
+                path = normpath(abspath(dirname(manifest_file), path))
+                return path
+            end
+            hash = get(entry, "git-tree-sha1", nothing)::Union{Nothing, String}
+            hash === nothing && return nothing
+            hash = Base.SHA1(hash)
+            # Keep the 4 since it used to be the default
+            for slug in (Base.version_slug(pkg.uuid, hash, 4), Base.version_slug(pkg.uuid, hash))
+                path = abspath(depot_path, "packages", pkg.name, slug)
+                ispath(path) && return path
+            end
+            return nothing
+        end
+    end
+    return nothing
+end
