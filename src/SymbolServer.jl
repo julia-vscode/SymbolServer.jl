@@ -152,22 +152,13 @@ end
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
-    filename = get_filename_from_name(manifest, uuid)
-
-    filename === nothing && return
-
-    cache_path = joinpath(ssi.store_path, filename)
-
-    if !isinmanifest(manifest, uuid)
-        @warn "Tried to load $uuid but failed to find it in the manifest."
-        return
-    end
-
+    isinmanifest(manifest, uuid) || return
     pe = frommanifest(manifest, uuid)
     pe_name = packagename(manifest, uuid)
-
     haskey(store, Symbol(pe_name)) && return
-
+    
+    # further existence checks needed?
+    cache_path = joinpath(ssi.store_path, get_cache_path(manifest, uuid)...)
     if isfile(cache_path)
         try
             package_data = open(cache_path) do io
@@ -196,8 +187,8 @@ end
 
 function clear_disc_store(ssi::SymbolServerInstance)
     for f in readdir(ssi.store_path)
-        if endswith(f, ".jstore")
-            rm(joinpath(ssi.store_path, f))
+        if occursin(f, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            rm(joinpath(ssi.store_path, f), recursive = true)
         end
     end
 end
