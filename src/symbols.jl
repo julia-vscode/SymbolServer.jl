@@ -464,7 +464,7 @@ end
 function load_core(; get_return_type = false)
     c = Pkg.Types.Context()
     cache = getenvtree([:Core,:Base])
-    symbols(cache)
+    symbols(cache, get_return_type = get_return_type)
     cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
     # This is wrong. As per the docs the Base.include each module should have it's own
