@@ -445,7 +445,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                 if x === m
                     cache[s] = VarRef(x)
                 elseif parentmodule(x) === m
-                    symbols(env, x, allnames, visited)
+                    symbols(env, x, allnames, visited, get_return_type = get_return_type)
                 else
                     cache[s] = VarRef(x)
                 end
@@ -455,7 +455,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
         end
     else
         for m in Base.loaded_modules_array()
-            in(m, visited) || symbols(env, m, allnames, visited)
+            in(m, visited) || symbols(env, m, allnames, visited, get_return_type = get_return_type)
         end
     end
 end
@@ -464,7 +464,7 @@ end
 function load_core(; get_return_type = false)
     c = Pkg.Types.Context()
     cache = getenvtree([:Core,:Base])
-    symbols(cache)
+    symbols(cache, get_return_type = get_return_type)
     cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
     # This is wrong. As per the docs the Base.include each module should have it's own
