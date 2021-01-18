@@ -67,6 +67,8 @@ flattened_packageversions = get_flattened_package_versions(all_packages)
 
 cache_folder = length(ARGS)>0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
 
+@info "Using the following folder as the cache folder: " cache_folder
+
 rm(joinpath(cache_folder, "logs"), force=true, recursive=true)
 mkpath(joinpath(cache_folder, "logs"))
 mkpath(joinpath(cache_folder, "logs", "packageloadfailure"))
