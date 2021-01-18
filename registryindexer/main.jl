@@ -1,6 +1,8 @@
 max_n = 1_000_000
-max_versions = 2
+max_versions = 1_000_000
 max_tasks = 36
+
+julia_versions = [v"1.5.3", v"1.4.0"]
 
 using Pkg, UUIDs
 
@@ -70,21 +72,75 @@ mkpath(joinpath(cache_folder, "logs", "packageindexfailure"))
 
 @info "Building docker image..."
 
-res = execute(Cmd(`docker build . -t juliavscodesymbolindexer -f registryindexer/Dockerfile`, dir=joinpath(@__DIR__, "..")))
+asyncmap(julia_versions) do v
 
-open(joinpath(cache_folder, "logs", "docker_image_create_stdout.txt"), "w") do f
-    print(f, res.stdout)
+    res = execute(Cmd(`docker build . -t juliavscodesymbolindexer:$v --build-arg JULIA_VERSION=$v -f registryindexer/Dockerfile`, dir=joinpath(@__DIR__, "..")))
+
+    open(joinpath(cache_folder, "logs", "docker_image_create_$(v)_stdout.txt"), "w") do f
+        print(f, res.stdout)
+    end
+
+    open(joinpath(cache_folder, "logs", "docker_image_create_$(v)_stderr.txt"), "w") do f
+        print(f, res.stderr)
+    end
+
+    if res.code!=0
+        error("Could not create docker image.")
+    end
 end
 
-open(joinpath(cache_folder, "logs", "docker_image_create_stderr.txt"), "w") do f
-    print(f, res.stderr)
-end
+@info "Done building docker images."
 
-if res.code!=0
-    error("Could not create docker image.")
-end
+true || asyncmap(julia_versions) do v
+    cache_path = joinpath(cache_folder, "v1", "julia", "v$v.tar.gz")
 
-@info "Done building docker image."
+    if isfile(cache_path)
+        # global count_already_cached += 1
+    else
+        res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$v julia SymbolServer/src/indexbasestdlib.jl $v`)
+
+        if res.code==10 || res.code==20
+            if res.code==10
+                # global count_failed_to_load += 1
+            elseif res.code==20
+                # global count_failed_to_install += 1
+            end
+
+            # mktempdir() do path
+            #     error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
+
+            #     # Write them to a file
+            #     open(joinpath(path, error_filename), "w") do io                    
+            #     end
+            
+            #     Pkg.PlatformEngines.package(path, cache_path)
+            # end
+
+            # open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+            #     print(f, res.stdout)
+            # end
+
+            # open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+            #     print(f, res.stderr)
+            # end
+
+            # global status_db
+
+            # push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : "load_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
+        elseif res.code==0
+            # global count_successfully_cached += 1
+        else
+            # global count_failed_to_index += 1
+            # open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+            #     print(f, res.stdout)
+            # end
+
+            # open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+            #     print(f, res.stderr)
+            # end
+        end
+    end
+end
 
 p = Progress(min(max_n, length(flattened_packageversions)), 1)
 
@@ -108,7 +164,7 @@ asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do 
     if isfile(cache_path)
         global count_already_cached += 1
     else
-        res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+        res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
         if res.code==10 || res.code==20
             if res.code==10
