@@ -30,15 +30,14 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
     if isfile(manifest_filename)
         let manifest = Pkg.Types.read_manifest(manifest_filename)
-            @info "Manifest found, $(length(validate_disc_store(ssi.store_path, manifest))) missing caches..."
             asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks = 10) do pkg
                 uuid = packageuuid(pkg)
                 suc = get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, ssi.store_path)
             end
-            @info "$(length(validate_disc_store(ssi.store_path, manifest))) missing caches after downloads."
-            # If the above was zero we'd still need to check that dev'd package
         end
     end
+
+    
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
     server_script = joinpath(@__DIR__, "server.jl")
 
