@@ -56,8 +56,6 @@ function execute(cmd::Base.Cmd)
 
     out_string =String(take!(out))
     err_string = String(take!(err))
-    println(out_string)
-    println(err_string)
     return (stdout = out_string,
             stderr = err_string,
             code = process.exitcode)
