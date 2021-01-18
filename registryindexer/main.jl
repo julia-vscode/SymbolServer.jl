@@ -1,6 +1,6 @@
 max_n = 1_000_000
 max_versions = 1_000_000
-max_tasks = 36
+max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
 julia_versions = [v"1.5.3", v"1.4.0"]
 
