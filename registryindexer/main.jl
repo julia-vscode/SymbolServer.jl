@@ -156,6 +156,8 @@ count_successfully_cached = 0
 
 statusdb_filename = joinpath(cache_folder, "statusdb.json")
 
+isfile(statusdb_filename) && @info "Loading existing statusdb.json..."
+
 status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
 
 asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do v
