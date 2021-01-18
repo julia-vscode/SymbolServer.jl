@@ -56,8 +56,6 @@ function execute(cmd::Base.Cmd)
 
     out_string =String(take!(out))
     err_string = String(take!(err))
-    println(out_string)
-    println(err_string)
     return (stdout = out_string,
             stderr = err_string,
             code = process.exitcode)
@@ -68,6 +66,8 @@ all_packages = get_all_package_versions(max_versions=max_versions)
 flattened_packageversions = get_flattened_package_versions(all_packages)
 
 cache_folder = length(ARGS)>0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
+
+@info "Using the following folder as the cache folder: " cache_folder
 
 rm(joinpath(cache_folder, "logs"), force=true, recursive=true)
 mkpath(joinpath(cache_folder, "logs"))
@@ -157,6 +157,8 @@ count_successfully_cached = 0
 @info "There are $(length(flattened_packageversions)) package/version combinations that need to be indexed. We will index at most $max_n."
 
 statusdb_filename = joinpath(cache_folder, "statusdb.json")
+
+isfile(statusdb_filename) && @info "Loading existing statusdb.json..."
 
 status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
 
