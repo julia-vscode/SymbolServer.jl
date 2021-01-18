@@ -2,7 +2,7 @@ max_n = 1_000_000
 max_versions = 1_000_000
 max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
-julia_versions = [v"1.5.3", v"1.4.0"]
+julia_versions = [v"1.5.3"]
 
 using Pkg, UUIDs
 
@@ -50,15 +50,12 @@ function get_flattened_package_versions(packages)
 end
 
 function execute(cmd::Base.Cmd)
-    code = run(cmd)
-
-    return (stdout="", stderr="", code=code)
-    # out = IOBuffer()
-    # err = IOBuffer()
-    # process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
-    # return (stdout = String(take!(out)),
-    #         stderr = String(take!(err)),
-    #         code = process.exitcode)
+    out = IOBuffer()
+    err = IOBuffer()
+    process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
+    return (stdout = String(take!(out)),
+            stderr = String(take!(err)),
+            code = process.exitcode)
 end
 
 all_packages = get_all_package_versions(max_versions=max_versions)
@@ -76,7 +73,6 @@ mkpath(joinpath(cache_folder, "logs", "packageindexfailure"))
 @info "Building docker image..."
 
 asyncmap(julia_versions) do v
-
     res = execute(Cmd(`docker build . -t juliavscodesymbolindexer:$v --build-arg JULIA_VERSION=$v -f registryindexer/Dockerfile`, dir=joinpath(@__DIR__, "..")))
 
     open(joinpath(cache_folder, "logs", "docker_image_create_$(v)_stdout.txt"), "w") do f
