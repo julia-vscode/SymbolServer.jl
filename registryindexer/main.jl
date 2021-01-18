@@ -1,8 +1,8 @@
 max_n = 1_000_000
 max_versions = 1_000_000
-max_tasks = 36
+max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
-julia_versions = [v"1.5.3", v"1.4.0"]
+julia_versions = [v"1.5.3"]
 
 using Pkg, UUIDs
 
@@ -53,8 +53,13 @@ function execute(cmd::Base.Cmd)
     out = IOBuffer()
     err = IOBuffer()
     process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
-    return (stdout = String(take!(out)),
-            stderr = String(take!(err)),
+
+    out_string =String(take!(out))
+    err_string = String(take!(err))
+    println(out_string)
+    println(err_string)
+    return (stdout = out_string,
+            stderr = err_string,
             code = process.exitcode)
 end
 
@@ -73,7 +78,6 @@ mkpath(joinpath(cache_folder, "logs", "packageindexfailure"))
 @info "Building docker image..."
 
 asyncmap(julia_versions) do v
-
     res = execute(Cmd(`docker build . -t juliavscodesymbolindexer:$v --build-arg JULIA_VERSION=$v -f registryindexer/Dockerfile`, dir=joinpath(@__DIR__, "..")))
 
     open(joinpath(cache_folder, "logs", "docker_image_create_$(v)_stdout.txt"), "w") do f
