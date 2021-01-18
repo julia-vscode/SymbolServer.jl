@@ -47,15 +47,6 @@ toplevel_pkgs = deps(project(ctx)) # First get a list of all package UUIds that 
 packages_to_load = []
 # Next make sure the cache is up-to-date for all of these
 
-
-# for pkg in validate_disc_store(server.storedir, ctx.env.manifest)
-asyncmap(collect(validate_disc_store(server.storedir, ctx.env.manifest)), ntasks = 10) do pkg
-    uuid = packageuuid(pkg)
-    suc = SymbolServer.get_file_from_cloud(manifest(ctx), uuid, server.storedir, server.storedir)
-end
-
-# sucs = asyncmap((uuid,pe) -> SymbolServer.get_file_from_cloud(ctx, uuid, pe, server.storedir, server.storedir), missing_pkgs, ntasks = 10)
-
 for (pk_name, uuid) in toplevel_pkgs
     isinmanifest(ctx, uuid) || continue
     pe = frommanifest(manifest(ctx), uuid)

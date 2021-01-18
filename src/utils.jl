@@ -429,7 +429,7 @@ end
 
 # tools to retrieve cache from the cloud
 
-function get_file_from_cloud(manifest, uuid, cache_dir = "../cache", download_dir = "../downloads/")
+function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir = "../cache", download_dir = "../downloads/")
     paths = get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
     link = string(first(splitext(joinpath("https://www.julia-vscode.org/symbolcache/store/v1/packages", paths...))), ".tar.gz")
@@ -456,6 +456,7 @@ function get_file_from_cloud(manifest, uuid, cache_dir = "../cache", download_di
         return false
     end
     pkg_path = Base.locate_package(Base.PkgId(uuid, name))
+    get_pkg_path(Base.PkgId(uuid, name), environment_path, depot_dir)
     if pkg_path === nothing || !isfile(pkg_path)
         @info "Couldn't find package on disc."
         return false
@@ -467,7 +468,11 @@ function get_file_from_cloud(manifest, uuid, cache_dir = "../cache", download_di
     return true
 end
 
+"""
+    validate_disc_store(store_path, manifest)
 
+This returns a list of packages in the manifest that don't have caches on disc.
+"""
 function validate_disc_store(store_path, manifest)
     filter(manifest) do pkg
         uuid = packageuuid(pkg)
@@ -476,6 +481,11 @@ function validate_disc_store(store_path, manifest)
     end
 end
 
+"""
+    get_pkg_path(pkg::Base.PkgId, env, depot_path)
+
+Find out where a package is installed without having to load it.
+"""
 function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     project_file = Base.env_project_file(env)
     manifest_file = Base.project_file_manifest_path(project_file)
@@ -540,6 +550,11 @@ function write_cache(uuid, pkg::Package, ctx, storedir)
     joinpath(storedir, cache_paths...)
 end
 
+"""
+    get_cache_path(manifest, uuid)
+
+Returns a vector containing the cache storage path for a package structured: [folder, folder, file].
+"""
 function get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
     pkg_info = frommanifest(manifest, uuid)
