@@ -50,12 +50,15 @@ function get_flattened_package_versions(packages)
 end
 
 function execute(cmd::Base.Cmd)
-    out = IOBuffer()
-    err = IOBuffer()
-    process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
-    return (stdout = String(take!(out)),
-            stderr = String(take!(err)),
-            code = process.exitcode)
+    code = run(cmd)
+
+    return (stdout="", stderr="", code=code)
+    # out = IOBuffer()
+    # err = IOBuffer()
+    # process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
+    # return (stdout = String(take!(out)),
+    #         stderr = String(take!(err)),
+    #         code = process.exitcode)
 end
 
 all_packages = get_all_package_versions(max_versions=max_versions)
