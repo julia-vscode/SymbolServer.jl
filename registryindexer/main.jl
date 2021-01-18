@@ -53,8 +53,13 @@ function execute(cmd::Base.Cmd)
     out = IOBuffer()
     err = IOBuffer()
     process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
-    return (stdout = String(take!(out)),
-            stderr = String(take!(err)),
+
+    out_string =String(take!(out))
+    err_string = String(take!(err))
+    println(out_string)
+    println(err_string)
+    return (stdout = out_string,
+            stderr = err_string,
             code = process.exitcode)
 end
 
