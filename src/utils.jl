@@ -445,13 +445,13 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
         end
         dest_filepath
     catch e
-        @info "Couldn't retrieve cache file."
+        @info "Couldn't retrieve cache file for $name."
         return false
     end
     cache = try
         CacheStore.read(open(file))
     catch e
-        @info "Couldn't read cache file, deleting."
+        @info "Couldn't read cache file for $name, deleting."
         rm(file)
         return false
     end
