@@ -102,7 +102,7 @@ end
         ssi = SymbolServerInstance("", store_path)
 
         @async begin
-            ret_status, store = getstore(ssi, path)
+            ret_status, store = getstore(ssi, path, download = false)
 
             @test ret_status == :canceled
         end
@@ -111,7 +111,7 @@ end
         # previously gets run first
         sleep(1)
 
-        ret_status2, store2 = getstore(ssi, path)
+        ret_status2, store2 = getstore(ssi, path, download = false)
 
         if ret_status2 == :failure
             @info String(take!(store2))
