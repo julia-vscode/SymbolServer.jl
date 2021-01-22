@@ -23,9 +23,23 @@ mutable struct SymbolServerInstance
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = false)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
+    # see if we can download any package cache's before 
+    if download
+        manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
+        if isfile(manifest_filename)
+            let manifest = Pkg.Types.read_manifest(manifest_filename)
+                asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks = 10) do pkg
+                    uuid = packageuuid(pkg)
+                    suc = get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, ssi.store_path)
+                end
+            end
+        end
+    end
+
+    
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
     server_script = joinpath(@__DIR__, "server.jl")
 
@@ -152,22 +166,13 @@ end
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
-    filename = get_filename_from_name(manifest, uuid)
-
-    filename === nothing && return
-
-    cache_path = joinpath(ssi.store_path, filename)
-
-    if !isinmanifest(manifest, uuid)
-        @warn "Tried to load $uuid but failed to find it in the manifest."
-        return
-    end
-
+    isinmanifest(manifest, uuid) || return
     pe = frommanifest(manifest, uuid)
     pe_name = packagename(manifest, uuid)
-
     haskey(store, Symbol(pe_name)) && return
-
+    
+    # further existence checks needed?
+    cache_path = joinpath(ssi.store_path, get_cache_path(manifest, uuid)...)
     if isfile(cache_path)
         try
             package_data = open(cache_path) do io
@@ -196,8 +201,8 @@ end
 
 function clear_disc_store(ssi::SymbolServerInstance)
     for f in readdir(ssi.store_path)
-        if endswith(f, ".jstore")
-            rm(joinpath(ssi.store_path, f))
+        if occursin(f, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            rm(joinpath(ssi.store_path, f), recursive = true)
         end
     end
 end

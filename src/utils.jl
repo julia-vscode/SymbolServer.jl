@@ -47,6 +47,7 @@ function isinmanifest end
     packageuuid(pkg::Pair{Any,Any}) = last(pkg) isa String ? UUID(last(pkg)) : UUID(first(last(pkg))["uuid"])
     packageuuid(pkg::Pair{String,Any}) = last(pkg) isa String ? UUID(last(pkg)) : UUID(first(last(pkg))["uuid"])
 
+    packagename(pkg::Pair{String,Any})::String = first(pkg)
     function packagename(c::Pkg.Types.Context, uuid)
         for (n, p) in c.env.manifest
             if get(first(p), "uuid", "") == string(uuid)
@@ -76,40 +77,17 @@ function isinmanifest end
     deps(pe::PackageEntry) = get(pe[1], "deps", Dict{String,Any}())
     path(pe::PackageEntry) = get(pe[1], "path", nothing)
     version(pe::PackageEntry) = get(pe[1], "version", nothing)
+    tree_hash(pe) = get(pe[1], "git-tree-sha1", nothing)
 
-    function frommanifest(c::Pkg.Types.Context, uuid)
-        for (n, p) in c.env.manifest
-            if get(first(p), "uuid", "") == string(uuid)
-                return p
-            end
-        end
-        return nothing
-    end
-    function frommanifest(manifest, uuid)
+    frommanifest(c::Pkg.Types.Context, uuid) = frommanifest(c.env.manifest, uuid)
+    
+    function frommanifest(manifest::Dict{String,Any}, uuid)
         for (n, p) in manifest
             if get(first(p), "uuid", "") == string(uuid)
-                return p
+                return (p)
             end
         end
         return nothing
-    end
-    function get_filename_from_name(manifest, uuid)
-        temp_var = [p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)]
-        isempty(temp_var) && return nothing
-
-        pkg_info = first(temp_var)
-
-        name_for_cash_file = if get(pkg_info, "git-tree-sha1", nothing) !== nothing
-            "-normal-" * string(pkg_info["git-tree-sha1"])
-        elseif get(pkg_info, "path", nothing) !== nothing
-            # We have a deved package, we use the hash of the folder name
-            "-deved-" * string(bytes2hex(sha256(pkg_info["path"])))
-        else
-            # We have a stdlib, we use the uuid
-            "-stdlib-" * string(uuid)
-        end
-
-        return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
     end
     is_package_deved(manifest, uuid) = get(first([p[2][1] for p in manifest if get(p[2][1], "uuid", "") == string(uuid)]), "path", "") != ""
 else
@@ -129,6 +107,8 @@ else
     end
     packageuuid(pkg::Pair{String,UUID}) = last(pkg)
     packageuuid(pkg::Pair{UUID,PackageEntry}) = first(pkg)
+    
+    packagename(pkg::Pair{UUID,PackageEntry})::String = last(pkg).name
     packagename(c::Pkg.Types.Context, uuid::UUID) = manifest(c)[uuid].name
     packagename(manifest::Dict{UUID,PackageEntry}, uuid::UUID) = manifest[uuid].name
 
@@ -144,29 +124,10 @@ else
     deps(pkg::Pair{String,UUID}, c::Pkg.Types.Context) = deps(packageuuid(pkg), c)
     path(pe::PackageEntry) = pe.path
     version(pe::PackageEntry) = pe.version
+    version(pe::Pair{UUID,PackageEntry}) = last(pe).version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID,PackageEntry}, uuid) = manifest[uuid]
-
-    function get_filename_from_name(manifest, uuid)
-        haskey(manifest, uuid) || return nothing
-
-        pkg_info = manifest[uuid]
-
-        tree_hash = VERSION >= v"1.3" ? pkg_info.tree_hash : get(pkg_info.other, "git-tree-sha1", nothing)
-
-        name_for_cash_file = if tree_hash !== nothing
-            # We have a normal package, we use the tree hash
-            "-normal-" * string(tree_hash)
-        elseif pkg_info.path !== nothing
-            # We have a deved package, we use the hash of the folder name
-            "-deved-" * string(bytes2hex(sha256(pkg_info.path)))
-        else
-            # We have a stdlib, we use the uuid
-            "-stdlib-" * string(uuid)
-        end
-
-        return "Julia-$VERSION-$(Sys.ARCH)-$name_for_cash_file.jstore"
-    end
+    tree_hash(pe::PackageEntry) = VERSION >= v"1.3" ? pe.tree_hash : get(pe.other, "git-tree-sha1", nothing)
 
     is_package_deved(manifest, uuid) = manifest[uuid].path !== nothing
 end
@@ -452,6 +413,8 @@ function modify_dirs(m::ModuleStore, f)
     end
 end
 
+
+
 pkg_src_dir(m::Module) = dirname(pathof(m))
     
 
@@ -461,4 +424,156 @@ function modify_dir(f, s1, s2)
     # @assert startswith(f, s1)
     # Removed assertion because of Enums issue
     string(s2, f[length(s1)+1:end])
+end
+
+
+# tools to retrieve cache from the cloud
+
+function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir = "../cache", download_dir = "../downloads/")
+    paths = get_cache_path(manifest, uuid)
+    name = packagename(manifest, uuid)
+    link = string(first(splitext(joinpath("https://www.julia-vscode.org/symbolcache/store/v1/packages", paths...))), ".tar.gz")
+    dest_filepath = joinpath(cache_dir, paths...)
+    download_dir = joinpath(download_dir, first(splitext(last(paths))))
+    download_filepath = joinpath(download_dir, last(paths))
+    file = try
+        if Pkg.PlatformEngines.download_verify_unpack(link, nothing, download_dir)
+            !isdir(joinpath(cache_dir, paths[1])) && mkdir(joinpath(cache_dir, paths[1]))
+            !isdir(joinpath(cache_dir, paths[1], paths[2])) && mkdir(joinpath(cache_dir, paths[1], paths[2]))
+            mv(download_filepath, dest_filepath)
+            rm(download_dir)
+        end
+        dest_filepath
+    catch e
+        @info "Couldn't retrieve cache file for $name."
+        return false
+    end
+    cache = try
+        CacheStore.read(open(file))
+    catch e
+        @info "Couldn't read cache file for $name, deleting."
+        rm(file)
+        return false
+    end
+    pkg_path = Base.locate_package(Base.PkgId(uuid, name))
+    get_pkg_path(Base.PkgId(uuid, name), environment_path, depot_dir)
+    if pkg_path === nothing || !isfile(pkg_path)
+        @info "Couldn't find package on disc."
+        return false
+    end
+
+    modify_dirs(cache.val, f -> modify_dir(f, "PLACEHOLDER", dirname(pkg_path)))
+    CacheStore.write(open(file, "w"), cache)
+    @info "Successfully download, scrubbed and saved $(name)"
+    return true
+end
+
+"""
+    validate_disc_store(store_path, manifest)
+
+This returns a list of packages in the manifest that don't have caches on disc.
+"""
+function validate_disc_store(store_path, manifest)
+    filter(manifest) do pkg
+        uuid = packageuuid(pkg)
+        file_name = joinpath(get_cache_path(manifest, uuid)...)
+        !isfile(joinpath(store_path, file_name)) && !endswith(file_name, "_jll.jstore") 
+    end
+end
+
+"""
+    get_pkg_path(pkg::Base.PkgId, env, depot_path)
+
+Find out where a package is installed without having to load it.
+"""
+function get_pkg_path(pkg::Base.PkgId, env, depot_path)
+    project_file = Base.env_project_file(env)
+    manifest_file = Base.project_file_manifest_path(project_file)
+    
+    d = Base.parsed_toml(manifest_file)
+    entries = get(d, pkg.name, nothing)::Union{Nothing, Vector{Any}}
+    entries === nothing && return nothing # TODO: allow name to mismatch?
+    for entry in entries
+        entry = entry::Dict{String, Any}
+        uuid = get(entry, "uuid", nothing)::Union{Nothing, String}
+        uuid === nothing && continue
+        if UUID(uuid) === pkg.uuid
+            path = get(entry, "path", nothing)::Union{Nothing, String}
+            if path !== nothing
+                path = normpath(abspath(dirname(manifest_file), path))
+                return path
+            end
+            hash = get(entry, "git-tree-sha1", nothing)::Union{Nothing, String}
+            hash === nothing && return nothing
+            hash = Base.SHA1(hash)
+            # Keep the 4 since it used to be the default
+            for slug in (Base.version_slug(pkg.uuid, hash, 4), Base.version_slug(pkg.uuid, hash))
+                path = abspath(depot_path, "packages", pkg.name, slug)
+                ispath(path) && return path
+            end
+            return nothing
+        end
+    end
+    return nothing
+end
+
+function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay)
+    isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
+    pe_name = packagename(c, uuid)
+
+    pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
+    if pid in keys(Base.loaded_modules)
+        conn !== nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")
+        loadingbay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
+        m = getfield(loadingbay, Symbol(pe_name))
+    else
+        m = try
+            conn !== nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
+            loadingbay.eval(:(import $(Symbol(pe_name))))
+            conn !== nothing && println(conn, "STOPLOAD;$pe_name")
+            m = getfield(loadingbay, Symbol(pe_name))
+        catch e
+            return
+        end
+    end
+end
+
+function write_cache(uuid, pkg::Package, ctx, storedir)
+    isinmanifest(ctx, uuid) || return ""
+    cache_paths = get_cache_path(ctx.env.manifest, uuid)
+    !isdir(joinpath(storedir, cache_paths[1])) && mkdir(joinpath(storedir, cache_paths[1]))
+    !isdir(joinpath(storedir, cache_paths[1], cache_paths[2])) && mkdir(joinpath(storedir, cache_paths[1], cache_paths[2]))
+    @info "Now writing to disc $uuid"
+    open(joinpath(storedir, cache_paths...), "w") do io
+        CacheStore.write(io, pkg)
+    end
+    joinpath(storedir, cache_paths...)
+end
+
+"""
+    get_cache_path(manifest, uuid)
+
+Returns a vector containing the cache storage path for a package structured: [folder, folder, file].
+"""
+function get_cache_path(manifest, uuid)
+    name = packagename(manifest, uuid)
+    pkg_info = frommanifest(manifest, uuid)
+    ver = version(pkg_info)
+    ver = ver === nothing ? "nothing" : ver
+    ver = replace(string(ver), '+'=>'_')
+    th = tree_hash(pkg_info)
+    th = th === nothing ? "nothing" : th
+    
+    [
+        string(uppercase(string(name)[1]))
+        string(name, "_", uuid)
+        string("v", ver, "_", th, ".jstore")
+    ]
+end
+
+function write_depot(server::Server, ctx, written_caches)
+    for (uuid, pkg) in server.depot
+        written_path = write_cache(uuid, pkg, ctx,  server.storedir)
+        !isempty(written_path) && push!(written_caches, written_path)
+    end
 end
