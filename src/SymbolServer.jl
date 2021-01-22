@@ -23,7 +23,7 @@ mutable struct SymbolServerInstance
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = true)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = false)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
     # see if we can download any package cache's before 
