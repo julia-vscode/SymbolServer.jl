@@ -1,11 +1,7 @@
-import Sockets
-!in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib") # Make sure we can load stdlibs
-using Pkg, SHA, SymbolServer, SymbolServer.CacheStore
-using Base: UUID
-using SymbolServer: Server, Package, packageuuid, packagename, isinproject, isinmanifest, deps, project, manifest, validate_disc_store, getenvtree, symbols, getallns, is_package_deved, sha_pkg, frommanifest, load_package, write_depot
+module SymbolServer
 
-store_path = length(ARGS) > 0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
-pipename   = length(ARGS) > 1 ? ARGS[2] : nothing
+import Sockets
+pipename = length(ARGS) > 1 ? ARGS[2] : nothing
 conn = pipename !== nothing ? Sockets.connect(pipename) : nothing
 
 start_time = time_ns()
@@ -24,7 +20,20 @@ else
     # We don't check the return value because it doesn't really matter
 end
 
-module LoadingBay end
+module LoadingBay
+end
+
+!in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib") # Make sure we can load stdlibs
+using Pkg, SHA
+using Base: UUID
+
+include("faketypes.jl")
+include("symbols.jl")
+include("utils.jl")
+include("serialize.jl")
+using .CacheStore
+
+store_path = length(ARGS) > 0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
 ctx = try
     Pkg.Types.Context()
@@ -89,7 +98,7 @@ env_symbols = getenvtree()
 visited = Base.IdSet{Module}([Base, Core]) # don't need to cache these each time...
 for (pid, m) in Base.loaded_modules
     if pid.uuid !== nothing && is_stdlib(pid.uuid) &&
-        isinmanifest(ctx, pid.uuid) && 
+        isinmanifest(ctx, pid.uuid) &&
         isfile(joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), pid.uuid)...))
         push!(visited, m)
         delete!(env_symbols, Symbol(pid.name))
@@ -109,3 +118,5 @@ end
 write_depot(server, server.context, written_caches)
 
 @info "Symbol server indexing took $((time_ns() - start_time) / 1e9) seconds."
+
+end
