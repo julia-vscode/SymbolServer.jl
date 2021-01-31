@@ -556,6 +556,9 @@ function load_core(; get_return_type = false)
     for m in cache_methods(Base.rand, :rand, cache, get_return_type)
         push!(cache[:Base][:rand].methods, m[2])
     end
+    for m in cache_methods(Base.randn, :randn, cache, get_return_type)
+        push!(cache[:Base][:randn].methods, m[2])
+    end
 
     # Intrinsics
     cache[:Core][:add_int] = VarRef(VarRef(VarRef(nothing, :Core), :Intrinsics), :add_int)
