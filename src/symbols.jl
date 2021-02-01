@@ -533,6 +533,13 @@ function load_core(; get_return_type = false)
     haskey(cache[:Core], :_typebody) && push!(cache[:Core][:_typebody!].methods, MethodStore(:_typebody!, :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:(===)].methods, MethodStore(:(===), :Core, "built-in", 0, [:a => FakeTypeName(Any), :b => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:(<:)].methods, MethodStore(:(<:), :Core, "built-in", 0, [:a => FakeTypeName(Type{T} where T), :b => FakeTypeName(Type{T} where T)], Symbol[], FakeTypeName(Any)))
+    # Add unspecified methods for Intrinsics, working out the actual methods will need to be done by hand?
+    for n in names(Core.Intrinsics)
+        if getfield(Core.Intrinsics, n) isa Core.IntrinsicFunction
+            push!(cache[:Core][:Intrinsics][n].methods, MethodStore(n, :Intrinsics, "built-in", 0, [:args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
+            :args => FakeTypeName(Vararg{Any})
+        end
+    end
 
     for bi in builtins
         if haskey(cache[:Core], bi) && isempty(cache[:Core][bi].methods)

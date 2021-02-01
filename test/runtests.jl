@@ -156,3 +156,8 @@ using SymbolServer: FakeTypeName
     end
 end
 
+@testset "Intrinsics`" begin
+    @test !isempty(SymbolServer.stdlibs[:Core][:Intrinsics].vals[:llvmcall].methods)
+end
+
+
