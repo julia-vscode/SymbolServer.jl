@@ -73,6 +73,6 @@ end
 # We are exiting with a custom error code to indicate success. This allows
 # the parent process to distinguish between a successful run and one
 # where the package exited the process.
-exit(82728235)
+exit(37)
 
 end

@@ -186,7 +186,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
 
     res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-    if res.code==82728235 # This is our magic error code that indicates everything worked
+    if res.code==37 # This is our magic error code that indicates everything worked
         global count_successfully_cached += 1
     else
         if res.code==10
@@ -199,6 +199,8 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
 
         mktempdir() do path
             error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
+
+            isfile(joinpath(path, error_filename)) && rm(joinpath(path, error_filename))
 
             # Write them to a file
             open(joinpath(path, error_filename), "w") do io                    
