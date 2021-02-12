@@ -184,7 +184,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
 
     res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-    if res.code==0
+    if res.code==82728235 # This is our magic error code that indicates everything worked
         global count_successfully_cached += 1
     else
         if res.code==10
