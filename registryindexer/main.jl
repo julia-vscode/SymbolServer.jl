@@ -177,6 +177,8 @@ isfile(statusdb_filename) && @info "Loading existing statusdb.json..."
 
 status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
 
+@info "Starting the actual indexing process..."
+
 asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
