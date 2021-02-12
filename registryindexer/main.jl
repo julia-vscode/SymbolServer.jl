@@ -186,7 +186,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
 
     if res.code==0
         global count_successfully_cached += 1
-    elseif res.code==10 || res.code==20
+    else
         if res.code==10
             global count_failed_to_load += 1
         elseif res.code==20
