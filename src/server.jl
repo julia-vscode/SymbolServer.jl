@@ -25,7 +25,7 @@ end
 
 !in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib") # Make sure we can load stdlibs
 using Pkg, SHA
-using Base: UUID
+using Base:UUID
 
 include("faketypes.jl")
 include("symbols.jl")
@@ -77,7 +77,7 @@ for (pk_name, uuid) in toplevel_pkgs
                 @info "Couldn't load $pk_name ($uuid) from file, will recache."
             end
         else
-            @info "Package $pk_name ($uuid) is cached."
+        @info "Package $pk_name ($uuid) is cached."
         end
     else
         @info "Will cache package $pk_name ($uuid)"
@@ -100,7 +100,7 @@ for (pid, m) in Base.loaded_modules
     if pid.uuid !== nothing && is_stdlib(pid.uuid) &&
         isinmanifest(ctx, pid.uuid) &&
         isfile(joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), pid.uuid)...))
-        push!(visited, m)
+push!(visited, m)
         delete!(env_symbols, Symbol(pid.name))
     end
 end
@@ -112,7 +112,7 @@ for (pkg_name, cache) in env_symbols
     !isinmanifest(ctx, String(pkg_name)) && continue
     uuid = packageuuid(ctx, String(pkg_name))
     pe = frommanifest(ctx, uuid)
-    server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(pe))
+server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(pe))
 end
 
 write_depot(server, server.context, written_caches)

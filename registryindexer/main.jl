@@ -2,7 +2,7 @@
 
 max_n = 1_000_000
 max_versions = 1_000_000
-max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
+max_tasks = length(ARGS) > 1 ? parse(Int, ARGS[2]) : 1
 
 julia_versions = [v"1.5.3"]
 
@@ -29,8 +29,8 @@ function get_all_package_versions(;max_versions=typemax(Int))
         }) |>
         @mutate(
             versions = (Pkg.TOML.parsefile(joinpath(registry_folder_path, _.path, "Versions.toml")) |>
-                @map(i->{version=VersionNumber(i[1]), treehash=i[2]["git-tree-sha1"]}) |> 
-                @orderby_descending(i->i.version) |>
+                @map(i -> {version = VersionNumber(i[1]), treehash = i[2]["git-tree-sha1"]}) |> 
+                @orderby_descending(i -> i.version) |>
                 @take(max_versions) |>
                 collect)
         ) |>
@@ -56,7 +56,7 @@ function execute(cmd::Base.Cmd)
     err = IOBuffer()
     process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
 
-    out_string =String(take!(out))
+    out_string = String(take!(out))
     err_string = String(take!(err))
     return (stdout = out_string,
             stderr = err_string,
@@ -71,7 +71,7 @@ flattened_packageversions = get_flattened_package_versions(all_packages)
 
 @info "Loaded package versions from registry..."
 
-cache_folder = length(ARGS)>0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
+cache_folder = length(ARGS) > 0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
 
 @info "Using the following folder as the cache folder: " cache_folder
 
@@ -94,7 +94,7 @@ asyncmap(julia_versions) do v
         print(f, res.stderr)
     end
 
-    if res.code!=0
+    if res.code != 0
         error("Could not create docker image.")
     end
 end
@@ -109,10 +109,10 @@ true || asyncmap(julia_versions) do v
     else
         res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$v julia SymbolServer/src/indexbasestdlib.jl $v`)
 
-        if res.code==10 || res.code==20
-            if res.code==10
+        if res.code == 10 || res.code == 20
+            if res.code == 10
                 # global count_failed_to_load += 1
-            elseif res.code==20
+            elseif res.code == 20
                 # global count_failed_to_install += 1
             end
 
@@ -137,7 +137,7 @@ true || asyncmap(julia_versions) do v
             # global status_db
 
             # push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : "load_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
-        elseif res.code==0
+        elseif res.code == 0
             # global count_successfully_cached += 1
         else
             # global count_failed_to_index += 1
@@ -155,7 +155,7 @@ end
 @info "Now computing which of the total $(length(flattened_packageversions)) package versions that exist still need to be indexed..."
 
 unindexed_packageversions = filter(collect(Iterators.take(flattened_packageversions, max_n))) do v
-    versionwithoutplus = replace(string(v.version), '+'=>'_')
+    versionwithoutplus = replace(string(v.version), '+' => '_')
 
     cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
@@ -180,18 +180,18 @@ status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
 @info "Starting the actual indexing process..."
 
 asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
-    versionwithoutplus = replace(string(v.version), '+'=>'_')
+    versionwithoutplus = replace(string(v.version), '+' => '_')
 
     cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
     res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-    if res.code==37 # This is our magic error code that indicates everything worked
+    if res.code == 37 # This is our magic error code that indicates everything worked
         global count_successfully_cached += 1
     else
-        if res.code==10
+        if res.code == 10
             global count_failed_to_load += 1
-        elseif res.code==20
+        elseif res.code == 20
             global count_failed_to_install += 1
         else
             global count_failed_to_index += 1
@@ -206,27 +206,27 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             open(joinpath(path, error_filename), "w") do io                    
             end
         
-            Pkg.PlatformEngines.package(path, cache_path)
+        Pkg.PlatformEngines.package(path, cache_path)
         end
 
-        open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+        open(joinpath(cache_folder, "logs", res.code == 10 ? "packageloadfailure" : res.code == 20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
             print(f, res.stdout)
         end
 
-        open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+        open(joinpath(cache_folder, "logs", res.code == 10 ? "packageloadfailure" : res.code == 20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
             print(f, res.stderr)
         end
 
         global status_db
 
-        push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : res.code==10 ? "load_error" : "index_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
+        push!(status_db, Dict("name" => v.name, "uuid" => string(v.uuid), "version" => string(v.version), "treehash" => v.treehash, "status" => res.code == 20 ? "install_error" : res.code == 10 ? "load_error" : "index_error", "indexattempts" => [Dict("juliaversion" => string(VERSION), "stdout" => res.stdout, "stderr" => res.stderr)]))
     end
 
-    next!(p, showvalues = [
-        (:finished_package_count,p.counter+1),
+    next!(p, showvalues=[
+        (:finished_package_count, p.counter + 1),
         (:count_successfully_cached, count_successfully_cached),
         (:count_failed_to_install, count_failed_to_install),
-        (:count_failed_to_load, count_failed_to_load),
+(:count_failed_to_load, count_failed_to_load),
         (:count_failed_to_index, count_failed_to_index),
     ])
 end

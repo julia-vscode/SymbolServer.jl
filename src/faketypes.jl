@@ -28,7 +28,7 @@ function FakeTypeName(@nospecialize(x); justname=false)
             ft = FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
             for p in x.parameters
                 push!(ft.parameters, _parameter(p))
-            end
+        end
             ft
         end
     elseif x isa Union
@@ -51,13 +51,13 @@ struct FakeUnion
 end
 FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a, justname=true), FakeTypeName(u.b, justname=true))
 struct FakeTypeVar
-    name::Symbol
+name::Symbol
     lb
     ub
 end
 FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb, justname=true), FakeTypeName(tv.ub, justname=true))
 struct FakeUnionAll
-    var::FakeTypeVar
+var::FakeTypeVar
     body::Any
 end
 FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname=true))
@@ -91,7 +91,7 @@ function Base.print(io::IO, x::FakeUnion; inunion=false)
     !inunion && print(io,  "Union{")
     print(io, x.a, ",")
     if x.b isa FakeUnion
-        print(io, x.b, inunion=true)
+    print(io, x.b, inunion=true)
     else
         print(io, x.b, "}")
     end

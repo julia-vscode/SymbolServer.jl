@@ -23,7 +23,7 @@ mutable struct SymbolServerInstance
     end
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = false)
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download=false)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
     # see if we can download any package cache's before 
@@ -31,7 +31,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
         if isfile(manifest_filename)
             let manifest = Pkg.Types.read_manifest(manifest_filename)
-                asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks = 10) do pkg
+                asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks=10) do pkg
                     uuid = packageuuid(pkg)
                     suc = get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, ssi.store_path)
                 end
@@ -74,7 +74,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         server = Sockets.listen(pipename)
 
         put!(server_is_ready, nothing)
-
+            
         conn = Sockets.accept(server)
 
         s = readline(conn)
@@ -113,7 +113,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     if success(p)
         # Now we create a new symbol store and load everything into that
         # from disc
-        new_store = recursive_copy(stdlibs)
+    new_store = recursive_copy(stdlibs)
         load_project_packages_into_store!(ssi, environment_path, new_store)
 
         return :success, new_store
@@ -202,7 +202,7 @@ end
 function clear_disc_store(ssi::SymbolServerInstance)
     for f in readdir(ssi.store_path)
         if occursin(f, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-            rm(joinpath(ssi.store_path, f), recursive = true)
+            rm(joinpath(ssi.store_path, f), recursive=true)
         end
     end
 end

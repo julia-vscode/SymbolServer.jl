@@ -1,7 +1,7 @@
 module SymbolServer
 
 using Pkg, SHA
-using Base: UUID
+using Base:UUID
 
 @info "Indexing Julia $VERSION..."
 
