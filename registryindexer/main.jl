@@ -231,6 +231,8 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     ])
 end
 
+@info "Now writing statusdb.json..."
+
 open(joinpath(cache_folder, "statusdb.json"), "w") do f
     JSON.print(f, status_db, 4)
 end
