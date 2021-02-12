@@ -1,3 +1,5 @@
+@info "Initializing indexing process..."
+
 max_n = 1_000_000
 max_versions = 1_000_000
 max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
@@ -67,7 +69,7 @@ all_packages = get_all_package_versions(max_versions=max_versions)
 
 flattened_packageversions = get_flattened_package_versions(all_packages)
 
-@info "Step 1 finished."
+@info "Loaded package versions from registry..."
 
 cache_folder = length(ARGS)>0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
 
@@ -152,7 +154,7 @@ end
 
 @info "Now computing which of the total $(length(flattened_packageversions)) package versions that exist still need to be indexed..."
 
-unindexed_packageversions = filter(Iterators.take(flattened_packageversions, max_n)) do v
+unindexed_packageversions = Iterators.filter(Iterators.take(flattened_packageversions, max_n)) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
     cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
