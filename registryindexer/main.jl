@@ -61,9 +61,13 @@ function execute(cmd::Base.Cmd)
             code = process.exitcode)
 end
 
+@info "Indexing started..."
+
 all_packages = get_all_package_versions(max_versions=max_versions)
 
 flattened_packageversions = get_flattened_package_versions(all_packages)
+
+@info "Step 1 finished."
 
 cache_folder = length(ARGS)>0 ? ARGS[1] : joinpath(@__DIR__, "..", "registryindexcache")
 
