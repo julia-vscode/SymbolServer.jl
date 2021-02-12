@@ -150,15 +150,24 @@ true || asyncmap(julia_versions) do v
     end
 end
 
-p = Progress(min(max_n, length(flattened_packageversions)), 1)
+@info "Now computing which of the total $(length(flattened_packageversions)) package versions that exist still need to be indexed..."
+
+unindexed_packageversions = filter(Iterators.take(flattened_packageversions, max_n)) do v
+    versionwithoutplus = replace(string(v.version), '+'=>'_')
+
+    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
+
+    return !isfile(cache_path)
+end
+
+p = Progress(min(max_n, length(unindexed_packageversions)), 1)
 
 count_failed_to_load = 0
 count_failed_to_index = 0
 count_failed_to_install = 0
-count_already_cached = 0
 count_successfully_cached = 0
 
-@info "There are $(length(flattened_packageversions)) package/version combinations that need to be indexed. We will index at most $max_n."
+@info "There are $(length(unindexed_packageversions)) new package/version combinations that need to be indexed. We will index at most $max_n."
 
 statusdb_filename = joinpath(cache_folder, "statusdb.json")
 
@@ -166,61 +175,56 @@ isfile(statusdb_filename) && @info "Loading existing statusdb.json..."
 
 status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
 
-asyncmap(Iterators.take(flattened_packageversions, max_n), ntasks=max_tasks) do v
+asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
     cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
-    if isfile(cache_path)
-        global count_already_cached += 1
+    res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+
+    if res.code==10 || res.code==20
+        if res.code==10
+            global count_failed_to_load += 1
+        elseif res.code==20
+            global count_failed_to_install += 1
+        end
+
+        mktempdir() do path
+            error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
+
+            # Write them to a file
+            open(joinpath(path, error_filename), "w") do io                    
+            end
+        
+            Pkg.PlatformEngines.package(path, cache_path)
+        end
+
+        open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+            print(f, res.stdout)
+        end
+
+        open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+            print(f, res.stderr)
+        end
+
+        global status_db
+
+        push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : "load_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
+    elseif res.code==0
+        global count_successfully_cached += 1
     else
-        res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+        global count_failed_to_index += 1
+        open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+            print(f, res.stdout)
+        end
 
-        if res.code==10 || res.code==20
-            if res.code==10
-                global count_failed_to_load += 1
-            elseif res.code==20
-                global count_failed_to_install += 1
-            end
-
-            mktempdir() do path
-                error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
-
-                # Write them to a file
-                open(joinpath(path, error_filename), "w") do io                    
-                end
-            
-                Pkg.PlatformEngines.package(path, cache_path)
-            end
-
-            open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
-                print(f, res.stdout)
-            end
-
-            open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : "packageinstallfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
-                print(f, res.stderr)
-            end
-
-            global status_db
-
-            push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : "load_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
-        elseif res.code==0
-            global count_successfully_cached += 1
-        else
-            global count_failed_to_index += 1
-            open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
-                print(f, res.stdout)
-            end
-
-            open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
-                print(f, res.stderr)
-            end
+        open(joinpath(cache_folder, "logs", "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+            print(f, res.stderr)
         end
     end
 
     next!(p, showvalues = [
         (:finished_package_count,p.counter+1),
-        (:count_already_cached, count_already_cached),
         (:count_successfully_cached, count_successfully_cached),
         (:count_failed_to_install, count_failed_to_install),
         (:count_failed_to_load, count_failed_to_load),
