@@ -154,7 +154,7 @@ end
 
 @info "Now computing which of the total $(length(flattened_packageversions)) package versions that exist still need to be indexed..."
 
-unindexed_packageversions = Iterators.filter(Iterators.take(flattened_packageversions, max_n)) do v
+unindexed_packageversions = filter(collect(Iterators.take(flattened_packageversions, max_n))) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
     cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
