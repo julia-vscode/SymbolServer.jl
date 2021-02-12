@@ -230,3 +230,5 @@ end
 open(joinpath(cache_folder, "statusdb.json"), "w") do f
     JSON.print(f, status_db, 4)
 end
+
+@info "Indexing finished."
