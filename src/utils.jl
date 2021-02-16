@@ -440,6 +440,10 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
         if Pkg.PlatformEngines.download_verify_unpack(link, nothing, download_dir)
             !isdir(joinpath(cache_dir, paths[1])) && mkdir(joinpath(cache_dir, paths[1]))
             !isdir(joinpath(cache_dir, paths[1], paths[2])) && mkdir(joinpath(cache_dir, paths[1], paths[2]))
+            if !isfile(download_filepath) && isfile(string(first(splitext(download_filepath)), ".unavailable"))
+                CacheStore.write(open(dest_filepath, "w"), ModuleStore(VarRef(nothing, Symbol(name)), Dict{Symbol,Any}(), "$(name)@$(version(manifest[uuid])) was downloaded but was not successfully cached.", true, Symbol[], Symbol[]))
+                return true
+            end
             mv(download_filepath, dest_filepath)
             rm(download_dir)
         end
