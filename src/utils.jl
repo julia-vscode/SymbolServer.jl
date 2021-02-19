@@ -132,7 +132,7 @@ else
     is_package_deved(manifest, uuid) = manifest[uuid].path !== nothing
 end
 
-function sha2_256_dir(path, sha=sha = zeros(UInt8, 32))
+function sha2_256_dir(path, sha=zeros(UInt8, 32))
     (uperm(path) & 0x04) != 0x04 && return
     startswith(path, ".") && return
     if isfile(path) && endswith(path, ".jl")
