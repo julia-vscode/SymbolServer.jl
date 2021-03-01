@@ -132,7 +132,7 @@ else
     is_package_deved(manifest, uuid) = manifest[uuid].path !== nothing
 end
 
-function sha2_256_dir(path, sha=sha = zeros(UInt8, 32))
+function sha2_256_dir(path, sha=zeros(UInt8, 32))
     (uperm(path) & 0x04) != 0x04 && return
     startswith(path, ".") && return
     if isfile(path) && endswith(path, ".jl")
@@ -434,12 +434,23 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
     name = packagename(manifest, uuid)
     link = string(first(splitext(joinpath("https://www.julia-vscode.org/symbolcache/store/v1/packages", paths...))), ".tar.gz")
     dest_filepath = joinpath(cache_dir, paths...)
+    dest_filepath_unavailable = string(first(splitext(dest_filepath)), ".unavailable")
     download_dir = joinpath(download_dir, first(splitext(last(paths))))
     download_filepath = joinpath(download_dir, last(paths))
+    download_filepath_unavailable = string(first(splitext(download_filepath)), ".unavailable")
+    if isfile(download_filepath_unavailable)
+        @info "Cloud was unable to cache $name in the past, we won't try to retrieve it again."
+        return false
+    end
     file = try
         if Pkg.PlatformEngines.download_verify_unpack(link, nothing, download_dir)
             !isdir(joinpath(cache_dir, paths[1])) && mkdir(joinpath(cache_dir, paths[1]))
             !isdir(joinpath(cache_dir, paths[1], paths[2])) && mkdir(joinpath(cache_dir, paths[1], paths[2]))
+            if !isfile(download_filepath) && isfile(download_filepath_unavailable)
+                mv(download_filepath_unavailable, dest_filepath_unavailable)
+                rm(download_dir)
+                return false
+            end
             mv(download_filepath, dest_filepath)
             rm(download_dir)
         end
