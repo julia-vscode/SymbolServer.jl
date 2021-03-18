@@ -207,7 +207,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             open(joinpath(path, error_filename), "w") do io                    
             end
 
-            @info "Files to be compressed" path error_filename readdir(path, join=true)
+            @info "Files to be compressed" path error_filename readdir(path, join=true) ispath(cache_path) isfile(cache_path_compressed)
         
             # Pkg.PlatformEngines.package(path, cache_path_compressed)
 
