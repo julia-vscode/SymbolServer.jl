@@ -198,6 +198,11 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             global count_failed_to_index += 1
         end
 
+        @info res.code
+
+        @info res.stdout
+        @info res.stderr
+
         mktempdir() do path
             error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
 
