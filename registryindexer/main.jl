@@ -205,6 +205,8 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             # Write them to a file
             open(joinpath(path, error_filename), "w") do io                    
             end
+
+            @info "Files to be compressed" path error_filename readdir(path, join=true)
         
             Pkg.PlatformEngines.package(path, cache_path)
         end
