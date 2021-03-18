@@ -209,7 +209,13 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
 
             @info "Files to be compressed" path error_filename readdir(path, join=true)
         
-            Pkg.PlatformEngines.package(path, cache_path_compressed)
+            # Pkg.PlatformEngines.package(path, cache_path_compressed)
+
+            withenv("GZIP" => "-9") do
+                cmd = Pkg.PlatformEngines.gen_package_cmd(path, cache_path_compressed)
+                run(cmd, (devnull, devnull, devnull))
+                end
+            end
         end
 
         open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
