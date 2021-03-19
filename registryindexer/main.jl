@@ -182,7 +182,8 @@ status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
 asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
-    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
+    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)")
+    cache_path_compressed = joinpath(cache_path, "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
     res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
@@ -197,6 +198,11 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             global count_failed_to_index += 1
         end
 
+        @info res.code
+
+        @info res.stdout
+        @info res.stderr
+
         mktempdir() do path
             error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
 
@@ -205,8 +211,16 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             # Write them to a file
             open(joinpath(path, error_filename), "w") do io                    
             end
+
+            @info "Files to be compressed" path error_filename readdir(path, join=true) ispath(cache_path) isfile(cache_path_compressed)
         
-            Pkg.PlatformEngines.package(path, cache_path)
+            # Pkg.PlatformEngines.package(path, cache_path_compressed)
+
+            withenv("GZIP" => "-9") do
+                cmd = Pkg.PlatformEngines.gen_package_cmd(path, cache_path_compressed)
+                run(cmd)
+                end
+            end
         end
 
         open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
