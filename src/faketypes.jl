@@ -14,23 +14,18 @@ struct FakeTypeName
     parameters::Vector{Any}
 end
 
-function FakeTypeName(@nospecialize(x); justname=false)
+function FakeTypeName(@nospecialize(x))
     @static if !(Vararg isa Type)
         x isa typeof(Vararg) && return FakeTypeofVararg(x)
     end
     if x isa DataType
         xname = x.name
         xnamename = xname.name
-        if justname
-            FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
-        else
-            # FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
-            ft = FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
-            for p in x.parameters
-                push!(ft.parameters, _parameter(p))
-            end
-            ft
+        ft = FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
+        for p in x.parameters
+            push!(ft.parameters, _parameter(p))
         end
+        ft
     elseif x isa Union
         FakeUnion(x)
     elseif x isa UnionAll
@@ -49,18 +44,18 @@ struct FakeUnion
     a
     b
 end
-FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a, justname=true), FakeTypeName(u.b, justname=true))
+FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a), FakeTypeName(u.b))
 struct FakeTypeVar
     name::Symbol
     lb
     ub
 end
-FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb, justname=true), FakeTypeName(tv.ub, justname=true))
+FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb), FakeTypeName(tv.ub))
 struct FakeUnionAll
     var::FakeTypeVar
     body::Any
 end
-FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname=true))
+FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body))
 
 function _parameter(@nospecialize(p))
     if p isa Union{Int,Symbol,Bool,Char}
@@ -70,7 +65,7 @@ function _parameter(@nospecialize(p))
     elseif p isa Tuple
         _parameter.(p)
     else
-        FakeTypeName(p, justname=true)
+        FakeTypeName(p)
     end
 end
 
@@ -135,9 +130,9 @@ Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
     function FakeTypeofVararg(va::typeof(Vararg))
         if isdefined(va, :N)
             vaN = va.N isa TypeVar ? FakeTypeVar(va.N) : va.N
-            FakeTypeofVararg(FakeTypeName(va.T; justname=true), vaN) # This should be FakeTypeName(va.N) but seems to crash inference.
+            FakeTypeofVararg(FakeTypeName(va.T), vaN) # This should be FakeTypeName(va.N) but seems to crash inference.
         elseif isdefined(va, :T)
-            FakeTypeofVararg(FakeTypeName(va.T; justname=true))
+            FakeTypeofVararg(FakeTypeName(va.T))
         else
             FakeTypeofVararg()
         end
