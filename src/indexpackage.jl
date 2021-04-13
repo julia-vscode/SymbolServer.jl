@@ -49,7 +49,7 @@ end
 
 # Get the symbols
 env = getenvtree([current_package_name])
-symbols(env, m)
+symbols(env, m, get_return_type=true)
 
  # Strip out paths
 modify_dirs(env[current_package_name], f -> modify_dir(f, pkg_src_dir(Base.loaded_modules[Base.PkgId(current_package_uuid, string(current_package_name))]), "PLACEHOLDER"))
