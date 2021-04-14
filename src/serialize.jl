@@ -216,7 +216,7 @@ function read(io, t = Base.read(io, UInt8))
         line = Base.read(io, UInt32)
         nsig = Base.read(io, Int)
         sig = Any[]
-        for i = 1:nsig
+        for _ = 1:nsig
             push!(sig, read(io)=>read(io))
         end
         kws = read_vector(io, Symbol)
@@ -232,7 +232,7 @@ function read(io, t = Base.read(io, UInt8))
         name = read(io)
         n = Base.read(io, Int)
         vals = Dict{Symbol,Any}()
-        for i = 1:n
+        for _ = 1:n
             k = read(io)
             v = read(io)
             vals[k] = v
@@ -263,7 +263,7 @@ end
 function read_vector(io, T)
     n = Base.read(io, Int)
     v = T[]
-    for i = 1:n
+    for _ = 1:n
         push!(v, read(io))
     end
     v

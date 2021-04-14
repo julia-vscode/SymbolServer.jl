@@ -82,7 +82,7 @@ function isinmanifest end
     frommanifest(c::Pkg.Types.Context, uuid) = frommanifest(c.env.manifest, uuid)
     
     function frommanifest(manifest::Dict{String,Any}, uuid)
-        for (n, p) in manifest
+        for p in values(manifest)
             if get(first(p), "uuid", "") == string(uuid)
                 return (p)
             end
@@ -173,21 +173,18 @@ function _doc(@nospecialize(object))
                 end
             end
         end
-        if isempty(groups)
-            alias = Base.Docs.aliasof(binding)
-            alias == binding ? "" : _doc(alias, sig)
-        elseif isempty(results)
+        if isempty(results)
             for group in groups, each in group.order
                 push!(results, group.docs[each])
             end
         end
         md = try
             Base.Docs.catdoc(map(Base.Docs.parsedoc, results)...)
-        catch err
+        catch
             nothing
         end
         return md === nothing ? "" : string(md)
-    catch e
+    catch
         return ""
     end
 end
@@ -455,13 +452,13 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
             rm(download_dir)
         end
         dest_filepath
-    catch e
+    catch
         @info "Couldn't retrieve cache file for $name."
         return false
     end
     cache = try
         CacheStore.read(open(file))
-    catch e
+    catch
         @info "Couldn't read cache file for $name, deleting."
         rm(file)
         return false
@@ -543,7 +540,7 @@ function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay)
             loadingbay.eval(:(import $(Symbol(pe_name))))
             conn !== nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(loadingbay, Symbol(pe_name))
-        catch e
+        catch
             return
         end
     end
