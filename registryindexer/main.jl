@@ -219,7 +219,6 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             withenv("GZIP" => "-9") do
                 cmd = Pkg.PlatformEngines.gen_package_cmd(path, cache_path_compressed)
                 run(cmd)
-                end
             end
         end
 
