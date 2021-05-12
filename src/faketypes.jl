@@ -20,7 +20,7 @@ function FakeTypeName(@nospecialize(x); justname=false)
     end
     if x isa DataType
         xname = x.name
-        xnamename = xname.name
+        xnamename = xname.name # necessary but unclear why.
         if justname
             FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
         else
