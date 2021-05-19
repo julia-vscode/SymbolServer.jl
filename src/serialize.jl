@@ -2,7 +2,7 @@ module CacheStore
 using ..SymbolServer: VarRef, FakeTypeName, FakeTypeofBottom, FakeTypeVar, FakeUnion, FakeUnionAll
 using ..SymbolServer: ModuleStore, Package, FunctionStore, MethodStore, DataTypeStore, GenericStore
 @static if !(Vararg isa Type)
-    using ..SymbolServer: FakeTypeofVararg
+    using ..SymbolServer:FakeTypeofVararg
 end
 
 const NothingHeader = 0x01
@@ -101,7 +101,7 @@ function write(io, x::MethodStore)
     write(io, x.name)
     write(io, x.mod)
     write(io, x.file)
-    Base.write(io, x.line)
+        Base.write(io, x.line)
     Base.write(io, length(x.sig))
     for p in x.sig
         write(io, p[1])
@@ -109,7 +109,7 @@ function write(io, x::MethodStore)
     end
     write_vector(io, x.kws)
     write(io, x.rt)
-end
+    end
 
 function write(io, x::FunctionStore)
     Base.write(io, FunctionStoreHeader)
@@ -118,7 +118,7 @@ function write(io, x::FunctionStore)
     write(io, x.doc)
     write(io, x.extends)
     write(io, x.exported)
-end
+    end
 
 function write(io, x::DataTypeStore)
     Base.write(io, DataTypeStoreHeader)
@@ -169,7 +169,7 @@ function write_vector(io, x)
     end
 end
 
-function read(io, t = Base.read(io, UInt8))
+function read(io, t=Base.read(io, UInt8))
     if t === VarRefHeader
         VarRef(read(io), read(io))
     elseif t === NothingHeader
@@ -217,7 +217,7 @@ function read(io, t = Base.read(io, UInt8))
         nsig = Base.read(io, Int)
         sig = Any[]
         for _ = 1:nsig
-            push!(sig, read(io)=>read(io))
+            push!(sig, read(io) => read(io))
         end
         kws = read_vector(io, Symbol)
         rt = read(io)
@@ -248,7 +248,7 @@ function read(io, t = Base.read(io, UInt8))
         false
     elseif t === TupleHeader
         N = Base.read(io, Int)
-        ntuple(i->read(io), N)
+        ntuple(i -> read(io), N)
     elseif t === PackageHeader
         name = read(io)
         val = read(io)

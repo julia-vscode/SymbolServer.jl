@@ -102,7 +102,7 @@ end
         ssi = SymbolServerInstance("", store_path)
 
         @async begin
-            ret_status, store = getstore(ssi, path, download = false)
+            ret_status, store = getstore(ssi, path, download=false)
 
             @test ret_status == :canceled
         end
@@ -111,7 +111,7 @@ end
         # previously gets run first
         sleep(1)
 
-        ret_status2, store2 = getstore(ssi, path, download = false)
+        ret_status2, store2 = getstore(ssi, path, download=false)
 
         if ret_status2 == :failure
             @info String(take!(store2))
@@ -137,7 +137,7 @@ end
     @test SymbolServer.stdlibs[:Base][:Sort][:sort] isa SymbolServer.FunctionStore
 end
 
-using SymbolServer: FakeTypeName
+using SymbolServer:FakeTypeName
 
 @testset "TypeofVararg" begin
     Ts = Any[Vararg, Vararg{Bool,3}, NTuple{N,Any} where N]

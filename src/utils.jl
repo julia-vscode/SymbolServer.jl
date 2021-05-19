@@ -1,7 +1,7 @@
 @static if VERSION < v"1.1"
     const PackageEntry = Vector{Dict{String,Any}}
 else
-    using Pkg.Types: PackageEntry
+    using Pkg.Types:PackageEntry
 end
 
 """
@@ -55,7 +55,7 @@ function isinmanifest end
             end
         end
         return nothing
-    end
+        end
     function packagename(manifest::Dict{String,Any}, uuid::String)
         for (n, p) in manifest
             if get(first(p), "uuid", "") == string(uuid)
@@ -133,7 +133,7 @@ else
 end
 
 function sha2_256_dir(path, sha=zeros(UInt8, 32))
-    (uperm(path) & 0x04) != 0x04 && return
+        (uperm(path) & 0x04) != 0x04 && return
     startswith(path, ".") && return
     if isfile(path) && endswith(path, ".jl")
         s1 = open(path) do f
@@ -420,13 +420,13 @@ pkg_src_dir(m::Module) = dirname(pathof(m))
 function modify_dir(f, s1, s2)
     # @assert startswith(f, s1)
     # Removed assertion because of Enums issue
-    string(s2, f[length(s1)+1:end])
+    string(s2, f[length(s1) + 1:end])
 end
 
 
 # tools to retrieve cache from the cloud
 
-function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir = "../cache", download_dir = "../downloads/")
+function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir="../cache", download_dir="../downloads/")
     paths = get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
     link = string(first(splitext(joinpath("https://www.julia-vscode.org/symbolcache/store/v1/packages", paths...))), ".tar.gz")
@@ -499,19 +499,19 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     manifest_file = Base.project_file_manifest_path(project_file)
     
     d = Base.parsed_toml(manifest_file)
-    entries = get(d, pkg.name, nothing)::Union{Nothing, Vector{Any}}
+    entries = get(d, pkg.name, nothing)::Union{Nothing,Vector{Any}}
     entries === nothing && return nothing # TODO: allow name to mismatch?
     for entry in entries
-        entry = entry::Dict{String, Any}
-        uuid = get(entry, "uuid", nothing)::Union{Nothing, String}
+        entry = entry::Dict{String,Any}
+        uuid = get(entry, "uuid", nothing)::Union{Nothing,String}
         uuid === nothing && continue
         if UUID(uuid) === pkg.uuid
-            path = get(entry, "path", nothing)::Union{Nothing, String}
+            path = get(entry, "path", nothing)::Union{Nothing,String}
             if path !== nothing
                 path = normpath(abspath(dirname(manifest_file), path))
                 return path
             end
-            hash = get(entry, "git-tree-sha1", nothing)::Union{Nothing, String}
+            hash = get(entry, "git-tree-sha1", nothing)::Union{Nothing,String}
             hash === nothing && return nothing
             hash = Base.SHA1(hash)
             # Keep the 4 since it used to be the default
@@ -557,7 +557,7 @@ function write_cache(uuid, pkg::Package, ctx, storedir)
     end
     joinpath(storedir, cache_paths...)
 end
-
+    
 """
     get_cache_path(manifest, uuid)
 
@@ -568,7 +568,7 @@ function get_cache_path(manifest, uuid)
     pkg_info = frommanifest(manifest, uuid)
     ver = version(pkg_info)
     ver = ver === nothing ? "nothing" : ver
-    ver = replace(string(ver), '+'=>'_')
+    ver = replace(string(ver), '+' => '_')
     th = tree_hash(pkg_info)
     th = th === nothing ? "nothing" : th
     

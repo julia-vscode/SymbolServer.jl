@@ -1,7 +1,7 @@
 module SymbolServer
 
 using Pkg, SHA
-using Base: UUID
+using Base:UUID
 
 current_package_name = Symbol(ARGS[1])
 current_package_version = VersionNumber(ARGS[2])
@@ -13,7 +13,7 @@ current_package_treehash = ARGS[4]
 # This path will always be mounted in the docker container in which we are running
 store_path = "/symcache"
 
-current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
+current_package_versionwithoutplus = replace(string(current_package_version), '+' => '_')
 cache_package_folder_path = joinpath(store_path, "v1", "packages", string(uppercase(string(current_package_name)[1])), "$(current_package_name)_$current_package_uuid")
 filename_without_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash"
 filename_with_extension = "$filename_without_extension.jstore"
