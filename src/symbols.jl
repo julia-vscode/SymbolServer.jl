@@ -416,7 +416,12 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                 elseif nameof(x) !== s
                     # This needs some finessing.
                     cache[s] = DataTypeStore(x, m, s in getnames(m))
-                    cache_methods(x, s, env, get_return_type)
+                    ms = cache_methods(x, s, env, get_return_type)
+                    # A slightly difficult case. `s` is probably a shadow binding of `x` but we should store the methods nonetheless.
+                    # Example: DataFrames.Not points to InvertedIndices.InvertedIndex
+                    for m in ms
+                        push!(cache[s].methods, m[2])
+                    end
                 else
                     # These are imported variables that are reexported.
                     cache[s] = VarRef(VarRef(parentmodule(x)), nameof(x))
