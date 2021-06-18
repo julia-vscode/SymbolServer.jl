@@ -68,7 +68,7 @@ function DataTypeStore(@nospecialize(t), parent_mod, exported)
     else
         []
     end
-    DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, ur_t.isconcretetype && fieldcount(ur_t) > 0 ? collect(fieldnames(ur_t)) : Symbol[], MethodStore[], _doc(t), exported)
+    DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, isconcretetype(ur_t) && fieldcount(ur_t) > 0 ? collect(fieldnames(ur_t)) : Symbol[], MethodStore[], _doc(t), exported)
 end
 
 struct FunctionStore <: SymStore
