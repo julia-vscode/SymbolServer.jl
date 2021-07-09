@@ -88,12 +88,10 @@ asyncmap(julia_versions) do v
 
     open(joinpath(cache_folder, "logs", "docker_image_create_$(v)_stdout.txt"), "w") do f
         print(f, res.stdout)
-        println(res.stdout)
     end
 
     open(joinpath(cache_folder, "logs", "docker_image_create_$(v)_stderr.txt"), "w") do f
         print(f, res.stderr)
-        println(res.stderr)
     end
 
     if res.code!=0
