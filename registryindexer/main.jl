@@ -6,7 +6,7 @@ max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
 julia_versions = [v"1.6.1"]
 
-using Pkg, UUIDs, Tar, 
+using Pkg, UUIDs, Tar, CodecZlib
 
 Pkg.activate(@__DIR__)
 Pkg.instantiate()
