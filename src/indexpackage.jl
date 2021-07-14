@@ -14,13 +14,7 @@ current_package_treehash = ARGS[4]
 store_path = "/symcache"
 
 current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
-cache_package_folder_path = joinpath(store_path, "v1", "packages", string(uppercase(string(current_package_name)[1])), "$(current_package_name)_$current_package_uuid")
-filename_without_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash"
-filename_with_extension = "$filename_without_extension.jstore"
-cache_path = joinpath(cache_package_folder_path, filename_with_extension)
-cache_path_compressed = joinpath(cache_package_folder_path, "$filename_without_extension.tar.gz")
-
-mkpath(cache_package_folder_path)
+filename_with_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash.jstore"
 
 module LoadingBay end
 
@@ -56,16 +50,9 @@ modify_dirs(env[current_package_name], f -> modify_dir(f, pkg_src_dir(Base.loade
 
 # There's an issue here - @enum used within CSTParser seems to add a method that is introduced from Enums.jl...
 
-Pkg.PlatformEngines.probe_platform_engines!()
-
-mktempdir() do path
-    # Write them to a file
-    open(joinpath(path, filename_with_extension), "w") do io
-        CacheStore.write(io, Package(string(current_package_name), env[current_package_name], current_package_uuid, nothing))
-    end
-
-    # cp(joinpath(path, filename_with_extension), cache_path)
-    Pkg.PlatformEngines.package(path, cache_path_compressed)
+# Write them to a file
+open(joinpath(store_path, filename_with_extension), "w") do io
+    CacheStore.write(io, Package(string(current_package_name), env[current_package_name], current_package_uuid, nothing))
 end
 
 @info "Finished indexing."

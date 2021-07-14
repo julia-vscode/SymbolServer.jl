@@ -4,16 +4,14 @@ max_n = 1_000_000
 max_versions = 1_000_000
 max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
-julia_versions = [v"1.5.3"]
+julia_versions = [v"1.6.1"]
 
-using Pkg, UUIDs
+using Pkg, UUIDs, Tar, 
 
 Pkg.activate(@__DIR__)
 Pkg.instantiate()
 
 using ProgressMeter, Query, JSON
-
-Pkg.PlatformEngines.probe_platform_engines!()
 
 function get_all_package_versions(;max_versions=typemax(Int))
     registry_folder_path = joinpath(homedir(), ".julia", "registries", "General")
@@ -185,25 +183,25 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)")
     cache_path_compressed = joinpath(cache_path, "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
-    res = execute(`docker run --rm --mount type=bind,source="$cache_folder",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+    mktempdir() do path
+        res = execute(`docker run --rm --mount type=bind,source="$path",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
-    if res.code==37 # This is our magic error code that indicates everything worked
-        global count_successfully_cached += 1
-    else
-        if res.code==10
-            global count_failed_to_load += 1
-        elseif res.code==20
-            global count_failed_to_install += 1
+        if res.code==37 # This is our magic error code that indicates everything worked
+            global count_successfully_cached += 1
         else
-            global count_failed_to_index += 1
-        end
+            if res.code==10
+                global count_failed_to_load += 1
+            elseif res.code==20
+                global count_failed_to_install += 1
+            else
+                global count_failed_to_index += 1
+            end
 
-        @info res.code
+            @info res.code
 
-        @info res.stdout
-        @info res.stderr
+            @info res.stdout
+            @info res.stderr
 
-        mktempdir() do path
             error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
 
             isfile(joinpath(path, error_filename)) && rm(joinpath(path, error_filename))
@@ -212,27 +210,29 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             open(joinpath(path, error_filename), "w") do io                    
             end
 
-            @info "Files to be compressed" path error_filename readdir(path, join=true) ispath(cache_path) isfile(cache_path_compressed)
-        
-            # Pkg.PlatformEngines.package(path, cache_path_compressed)
+            open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
+                print(f, res.stdout)
+            end
 
-            withenv("GZIP" => "-9") do
-                cmd = Pkg.PlatformEngines.gen_package_cmd(path, cache_path_compressed)
-                run(cmd)
+            open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
+                print(f, res.stderr)
+            end
+
+            global status_db
+
+            push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : res.code==10 ? "load_error" : "index_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
+        end
+
+        @info "Files to be compressed" path readdir(path, join=true) ispath(cache_path) isfile(cache_path_compressed)
+
+        open(cache_path_compressed, write=true) do tar_gz
+            tar = GzipCompressorStream(tar_gz)
+            try
+                Tar.create(path, tar)
+            finally
+                close(tar)
             end
         end
-
-        open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
-            print(f, res.stdout)
-        end
-
-        open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
-            print(f, res.stderr)
-        end
-
-        global status_db
-
-        push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : res.code==10 ? "load_error" : "index_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
     end
 
     next!(p, showvalues = [
