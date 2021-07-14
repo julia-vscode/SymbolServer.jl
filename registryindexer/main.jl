@@ -6,12 +6,12 @@ max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
 julia_versions = [v"1.6.1"]
 
-using Pkg, UUIDs, Tar, CodecZlib
+using Pkg
 
 Pkg.activate(@__DIR__)
 Pkg.instantiate()
 
-using ProgressMeter, Query, JSON
+using ProgressMeter, Query, JSON, UUIDs, Tar, CodecZlib
 
 function get_all_package_versions(;max_versions=typemax(Int))
     registry_folder_path = joinpath(homedir(), ".julia", "registries", "General")
