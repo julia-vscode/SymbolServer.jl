@@ -30,11 +30,11 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     if download
         manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
         if isfile(manifest_filename)
-            let manifest = Pkg.Types.read_manifest(manifest_filename)
+            let manifest = read_manifest(manifest_filename); if manifest !== nothing
                 asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks = 10) do pkg
                     uuid = packageuuid(pkg)
                     get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, ssi.store_path)
-                end
+                end end
             end
         end
     end
@@ -144,16 +144,8 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
     end
 
     manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
-    manifest = try
-        Pkg.API.read_manifest(manifest_filename)
-    catch err
-        if err isa Pkg.Types.PkgError
-            @warn "Could not load manifest."
-            return
-        else
-            rethrow(err)
-        end
-    end
+    manifest = read_manifest(manifest_filename)
+    manifest === nothing && return
 
     for uuid in values(deps(project))
         load_package_from_cache_into_store!(ssi, uuid, manifest, store)

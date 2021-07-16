@@ -6,9 +6,40 @@ end
 
 """
     manifest(c::Pkg.Types.Context)
-Retrieves the manifest of a Context.
+Retrieves the UUID -> PackageEntry map from the manifest of a Context.
 """
-manifest(c::Pkg.Types.Context) = c.env.manifest
+function manifest(c::Pkg.Types.Context)
+    m = c.env.manifest
+    if VERSION < v"1.6.2"
+        return m
+    else
+        return m.deps
+    end
+end
+
+"""
+    read_manifest(manifest_filename)
+
+Read the manifest from the path and return the UUID -> PackageEntry map.
+If the file can't be read, return `nothing`.
+"""
+function read_manifest(manifest_filename)
+    try
+        m = Pkg.API.read_manifest(manifest_filename)
+        if VERSION < v"1.6.2"
+            return m
+        else
+            return m.deps
+        end
+    catch err
+        if err isa Pkg.Types.PkgError
+            @warn "Could not load manifest."
+            return nothing
+        else
+            rethrow(err)
+        end
+    end
+end
 
 """
     project(c::Pkg.Types.Context)
@@ -49,7 +80,7 @@ function isinmanifest end
 
     packagename(pkg::Pair{String,Any})::String = first(pkg)
     function packagename(c::Pkg.Types.Context, uuid)
-        for (n, p) in c.env.manifest
+        for (n, p) in manifest(c)
             if get(first(p), "uuid", "") == string(uuid)
                 return n
             end
@@ -79,8 +110,8 @@ function isinmanifest end
     version(pe::PackageEntry) = get(pe[1], "version", nothing)
     tree_hash(pe) = get(pe[1], "git-tree-sha1", nothing)
 
-    frommanifest(c::Pkg.Types.Context, uuid) = frommanifest(c.env.manifest, uuid)
-    
+    frommanifest(c::Pkg.Types.Context, uuid) = frommanifest(manifest(c), uuid)
+
     function frommanifest(manifest::Dict{String,Any}, uuid)
         for p in values(manifest)
             if get(first(p), "uuid", "") == string(uuid)
@@ -548,7 +579,7 @@ end
 
 function write_cache(uuid, pkg::Package, ctx, storedir)
     isinmanifest(ctx, uuid) || return ""
-    cache_paths = get_cache_path(ctx.env.manifest, uuid)
+    cache_paths = get_cache_path(manifest(ctx), uuid)
     !isdir(joinpath(storedir, cache_paths[1])) && mkdir(joinpath(storedir, cache_paths[1]))
     !isdir(joinpath(storedir, cache_paths[1], cache_paths[2])) && mkdir(joinpath(storedir, cache_paths[1], cache_paths[2]))
     @info "Now writing to disc $uuid"

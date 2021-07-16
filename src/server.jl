@@ -62,12 +62,12 @@ for (pk_name, uuid) in toplevel_pkgs
     cache_path = joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), uuid)...)
 
     if isfile(cache_path)
-        if is_package_deved(ctx.env.manifest, uuid)
+        if is_package_deved(manifest(ctx), uuid)
             try
                 cached_version = open(cache_path) do io
                     CacheStore.read(io)
                 end
-                if sha_pkg(frommanifest(ctx.env.manifest, uuid)) != cached_version.sha
+                if sha_pkg(frommanifest(manifest(ctx), uuid)) != cached_version.sha
                     @info "Outdated sha, will recache package $pk_name ($uuid)"
                     push!(packages_to_load, uuid)
                 else
