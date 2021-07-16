@@ -80,7 +80,7 @@ function isinmanifest end
     tree_hash(pe) = get(pe[1], "git-tree-sha1", nothing)
 
     frommanifest(c::Pkg.Types.Context, uuid) = frommanifest(c.env.manifest, uuid)
-    
+
     function frommanifest(manifest::Dict{String,Any}, uuid)
         for p in values(manifest)
             if get(first(p), "uuid", "") == string(uuid)
@@ -107,7 +107,7 @@ else
     end
     packageuuid(pkg::Pair{String,UUID}) = last(pkg)
     packageuuid(pkg::Pair{UUID,PackageEntry}) = first(pkg)
-    
+
     packagename(pkg::Pair{UUID,PackageEntry})::String = last(pkg).name
     packagename(c::Pkg.Types.Context, uuid::UUID) = manifest(c)[uuid].name
     packagename(manifest::Dict{UUID,PackageEntry}, uuid::UUID) = manifest[uuid].name
@@ -127,9 +127,16 @@ else
     version(pe::Pair{UUID,PackageEntry}) = last(pe).version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID,PackageEntry}, uuid) = manifest[uuid]
+
     tree_hash(pe::PackageEntry) = VERSION >= v"1.3" ? pe.tree_hash : get(pe.other, "git-tree-sha1", nothing)
 
     is_package_deved(manifest, uuid) = manifest[uuid].path !== nothing
+
+    @static if !(Pkg.Types.Manifest <: Dict)
+        frommanifest(manifest::Pkg.Types.Manifest, uuid) = frommanifest(manifest.deps, uuid)
+        packagename(manifest::Pkg.Types.Manifest, uuid::UUID) = packagename(manifest.deps, uuid)
+        isinmanifest(manifest::Pkg.Types.Manifest, uuid::UUID) = isinmanifest(manifest.deps, uuid)
+    end
 end
 
 function sha2_256_dir(path, sha=zeros(UInt8, 32))
@@ -413,7 +420,7 @@ end
 
 
 pkg_src_dir(m::Module) = dirname(pathof(m))
-    
+
 
 
 # replace s1 with s2 at the start of a string
@@ -485,7 +492,7 @@ function validate_disc_store(store_path, manifest)
     filter(manifest) do pkg
         uuid = packageuuid(pkg)
         file_name = joinpath(get_cache_path(manifest, uuid)...)
-        !isfile(joinpath(store_path, file_name)) && !endswith(file_name, "_jll.jstore") 
+        !isfile(joinpath(store_path, file_name)) && !endswith(file_name, "_jll.jstore")
     end
 end
 
@@ -497,7 +504,7 @@ Find out where a package is installed without having to load it.
 function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     project_file = Base.env_project_file(env)
     manifest_file = Base.project_file_manifest_path(project_file)
-    
+
     d = Base.parsed_toml(manifest_file)
     entries = get(d, pkg.name, nothing)::Union{Nothing, Vector{Any}}
     entries === nothing && return nothing # TODO: allow name to mismatch?
@@ -571,7 +578,7 @@ function get_cache_path(manifest, uuid)
     ver = replace(string(ver), '+'=>'_')
     th = tree_hash(pkg_info)
     th = th === nothing ? "nothing" : th
-    
+
     [
         string(uppercase(string(name)[1]))
         string(name, "_", uuid)
