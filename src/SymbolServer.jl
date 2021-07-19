@@ -26,20 +26,23 @@ end
 function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = false)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
-    # see if we can download any package cache's before 
+    # see if we can download any package cache's before
     if download
         manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
         if isfile(manifest_filename)
-            let manifest = read_manifest(manifest_filename); if manifest !== nothing
-                asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks = 10) do pkg
-                    uuid = packageuuid(pkg)
-                    get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, ssi.store_path)
-                end end
+            let manifest = read_manifest(manifest_filename)
+                if manifest !== nothing
+                    @debug "Downloading cache files for manifest at $(manifest_filename)."
+                    asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks = 10) do pkg
+                        uuid = packageuuid(pkg)
+                        get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, ssi.store_path)
+                    end
+                end
             end
         end
     end
 
-    
+
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
     server_script = joinpath(@__DIR__, "server.jl")
 
@@ -162,7 +165,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     pe = frommanifest(manifest, uuid)
     pe_name = packagename(manifest, uuid)
     haskey(store, Symbol(pe_name)) && return
-    
+
     # further existence checks needed?
     cache_path = joinpath(ssi.store_path, get_cache_path(manifest, uuid)...)
     if isfile(cache_path)
