@@ -26,7 +26,7 @@ If the file can't be read, return `nothing`.
 function read_manifest(manifest_filename)
     try
         m = Pkg.API.read_manifest(manifest_filename)
-        if VERSION < v"1.6.2"
+        if m isa Dict
             return m
         else
             return m.deps
