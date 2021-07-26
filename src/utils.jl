@@ -528,6 +528,7 @@ Find out where a package is installed without having to load it.
 """
 function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     project_file = Base.env_project_file(env)
+    project_file isa Bool && return nothing
     manifest_file = Base.project_file_manifest_path(project_file)
 
     d = Base.parsed_toml(manifest_file)
