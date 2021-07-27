@@ -10,7 +10,7 @@ Retrieves the UUID -> PackageEntry map from the manifest of a Context.
 """
 function manifest(c::Pkg.Types.Context)
     m = c.env.manifest
-    if VERSION < v"1.6.2"
+    if m isa Dict
         return m
     else
         return m.deps
