@@ -32,12 +32,8 @@ function read_manifest(manifest_filename)
             return m.deps
         end
     catch err
-        if err isa Pkg.Types.PkgError
-            @warn "Could not load manifest."
-            return nothing
-        else
-            rethrow(err)
-        end
+        @warn "Could not load manifest." exception=(err, catch_backtrace())
+        return nothing
     end
 end
 
