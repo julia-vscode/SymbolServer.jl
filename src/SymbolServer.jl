@@ -138,12 +138,8 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
     project = try
         Pkg.API.read_project(project_filename)
     catch err
-        if err isa Pkg.Types.PkgError
-            @warn "Could not load project."
-            return
-        else
-            rethrow(err)
-        end
+        @warn "Could not load project."
+        return
     end
 
     manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
