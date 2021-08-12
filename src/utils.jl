@@ -614,3 +614,15 @@ function write_depot(server::Server, ctx, written_caches)
         !isempty(written_path) && push!(written_caches, written_path)
     end
 end
+
+function toml_path(p, candidates)
+    if isfile(p) && basename(p) in candidates
+        return p
+    elseif isdir(p)
+        for c in candidates
+            pc = joinpath(p, c)
+            isfile(pc) && return pc
+        end
+    end
+    return nothing
+end

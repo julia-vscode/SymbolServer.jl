@@ -28,7 +28,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     # see if we can download any package cache's before
     if download
-        manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
+        manifest_filename = toml_path(environment_path, Base.manifest_names)
         if isfile(manifest_filename)
             let manifest = read_manifest(manifest_filename)
                 if manifest !== nothing
@@ -134,7 +134,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 end
 
 function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)
-    project_filename = isfile(joinpath(environment_path, "JuliaProject.toml")) ? joinpath(environment_path, "JuliaProject.toml") : joinpath(environment_path, "Project.toml")
+    project_filename = toml_path(environment_path, Base.project_names)
     project = try
         Pkg.API.read_project(project_filename)
     catch err
@@ -142,7 +142,7 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
         return
     end
 
-    manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
+    manifest_filename = toml_path(environment_path, Base.manifest_names)
     manifest = read_manifest(manifest_filename)
     manifest === nothing && return
 
