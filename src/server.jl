@@ -86,8 +86,8 @@ for (pk_name, uuid) in toplevel_pkgs
 end
 
 # Load all packages together
-for uuid in packages_to_load
-    load_package(ctx, uuid, conn, LoadingBay)
+for (i, uuid) in enumerate(packages_to_load)
+    load_package(ctx, uuid, conn, LoadingBay, round(Int, 100*(i - 1)/length(packages_to_load)))
 end
 
 # Create image of whole package env. This creates the module structure only.
@@ -118,5 +118,8 @@ end
 write_depot(server, server.context, written_caches)
 
 @info "Symbol server indexing took $((time_ns() - start_time) / 1e9) seconds."
+
+println(conn, "DONE")
+close(conn)
 
 end

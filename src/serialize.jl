@@ -170,18 +170,20 @@ function write_vector(io, x)
 end
 
 function read(io, t = Base.read(io, UInt8))
+    yield() # this can block the LS process for a long time otherwise
+
     if t === VarRefHeader
         VarRef(read(io), read(io))
     elseif t === NothingHeader
         nothing
     elseif t === SymbolHeader
         n = Base.read(io, Int)
-        out = UInt8[]
+        out = Vector{UInt8}(undef, n)
         readbytes!(io, out, n)
         Symbol(String(out))
     elseif t === StringHeader
         n = Base.read(io, Int)
-        out = UInt8[]
+        out = Vector{UInt8}(undef, n)
         readbytes!(io, out, n)
         String(out)
     elseif t === CharHeader
@@ -217,7 +219,7 @@ function read(io, t = Base.read(io, UInt8))
         nsig = Base.read(io, Int)
         sig = Any[]
         for _ = 1:nsig
-            push!(sig, read(io)=>read(io))
+            push!(sig, read(io) => read(io))
         end
         kws = read_vector(io, Symbol)
         rt = read(io)
@@ -256,15 +258,15 @@ function read(io, t = Base.read(io, UInt8))
         sha = Base.read(io, 32)
         Package(name, val, uuid, all(x == 0x00 for x in sha) ? nothing : sha)
     else
-        error("HIYA: $t")
+        error("Unknown type: $t")
     end
 end
 
 function read_vector(io, T)
     n = Base.read(io, Int)
-    v = T[]
-    for _ = 1:n
-        push!(v, read(io))
+    v = Vector{T}(undef, n)
+    for i in 1:n
+        v[i] = read(io)
     end
     v
 end
@@ -272,7 +274,7 @@ end
 function storeunstore(x)
     io = IOBuffer()
     write(io, x)
-    bs = take!(io)    
+    bs = take!(io)
     read(IOBuffer(bs))
 end
 end

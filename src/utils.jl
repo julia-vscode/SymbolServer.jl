@@ -554,18 +554,18 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     return nothing
 end
 
-function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay)
+function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay, percentage = missing)
     isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
     pe_name = packagename(c, uuid)
 
     pid = Base.PkgId(uuid isa String ? Base.UUID(uuid) : uuid, pe_name)
     if pid in keys(Base.loaded_modules)
-        conn !== nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion")
+        conn !== nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion;$percentage")
         loadingbay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
         m = getfield(loadingbay, Symbol(pe_name))
     else
         m = try
-            conn !== nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion")
+            conn !== nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion;$percentage")
             loadingbay.eval(:(import $(Symbol(pe_name))))
             conn !== nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(loadingbay, Symbol(pe_name))
