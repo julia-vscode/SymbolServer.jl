@@ -170,7 +170,9 @@ function write_vector(io, x)
 end
 
 function read(io, t = Base.read(io, UInt8))
-    yield() # this can block the LS process for a long time otherwise
+    # There are a bunch of `yield`s in potentially expensive code paths.
+    # One top-level `yield` would probably increase responsiveness in the
+    # LS, but increases runtime by 3x. This seems like a good compromise.
 
     if t === VarRefHeader
         VarRef(read(io), read(io))
@@ -182,6 +184,7 @@ function read(io, t = Base.read(io, UInt8))
         readbytes!(io, out, n)
         Symbol(String(out))
     elseif t === StringHeader
+        yield()
         n = Base.read(io, Int)
         out = Vector{UInt8}(undef, n)
         readbytes!(io, out, n)
@@ -212,28 +215,34 @@ function read(io, t = Base.read(io, UInt8))
     elseif t === UndefHeader
         nothing
     elseif t === MethodStoreHeader
+        yield()
         name = read(io)
         mod = read(io)
         file = read(io)
         line = Base.read(io, UInt32)
         nsig = Base.read(io, Int)
-        sig = Any[]
-        for _ = 1:nsig
-            push!(sig, read(io) => read(io))
+        sig = Vector{Pair{Any, Any}}(undef, nsig)
+        for i in 1:nsig
+            sig[i] = read(io) => read(io)
         end
         kws = read_vector(io, Symbol)
         rt = read(io)
         MethodStore(name, mod, file, line, sig, kws, rt)
     elseif t === FunctionStoreHeader
+        yield()
         FunctionStore(read(io), read_vector(io, MethodStore), read(io), read(io), read(io))
     elseif t === DataTypeStoreHeader
+        yield()
         DataTypeStore(read(io), read(io), read_vector(io, Any), read_vector(io, Any), read_vector(io, Any), read_vector(io, MethodStore), read(io), read(io))
     elseif t === GenericStoreHeader
+        yield()
         GenericStore(read(io), read(io), read(io), read(io))
     elseif t === ModuleStoreHeader
+        yield()
         name = read(io)
         n = Base.read(io, Int)
         vals = Dict{Symbol,Any}()
+        sizehint!(vals, n)
         for _ = 1:n
             k = read(io)
             v = read(io)
@@ -252,6 +261,7 @@ function read(io, t = Base.read(io, UInt8))
         N = Base.read(io, Int)
         ntuple(i->read(io), N)
     elseif t === PackageHeader
+        yield()
         name = read(io)
         val = read(io)
         uuid = Base.UUID(Base.read(io, UInt128))
