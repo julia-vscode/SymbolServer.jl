@@ -72,33 +72,41 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     pipename = Sys.iswindows() ? "\\\\.\\pipe\\vscjlsymserv-$(UUIDs.uuid4())" : joinpath(tempdir(), "vscjlsymserv-$(UUIDs.uuid4())")
 
     server_is_ready = Channel(1)
-
     @async try
         server = Sockets.listen(pipename)
 
         put!(server_is_ready, nothing)
-
+        @debug "SymbolStore: accept"
         conn = Sockets.accept(server)
 
-        s = readline(conn)
-
-        while s != "" && isopen(conn)
+        while isopen(conn)
+            @debug "SymbolStore: readline"
+            s = readline(conn)
+            @debug "SymbolStore: after readline" s
+            if isempty(s)
+                continue
+            end
             parts = split(s, ';')
             if parts[1] == "STARTLOAD"
                 currently_loading_a_package = true
                 current_package_name = parts[2]
                 current_package_uuid = parts[3]
                 current_package_version = parts[4]
-                progress_callback !== nothing && progress_callback(current_package_name)
+                percentage = parts[5] == "missing" ? missing : parse(Int, parts[5])
+                progress_callback !== nothing && progress_callback("Indexing $current_package_name...", percentage)
             elseif parts[1] == "STOPLOAD"
                 currently_loading_a_package = false
             elseif parts[1] == "PROCESSPKG"
-                progress_callback !== nothing && progress_callback(parts[2])
+                current_package_name = parts[2]
+                percentage = parts[5] == "missing" ? missing : parse(Int, parts[5])
+                progress_callback !== nothing && progress_callback("Processing $current_package_name...", percentage)
+            elseif parts[1] == "DONE"
+                break
             else
                 error("Unknown command.")
             end
-            s = readline(conn)
         end
+        @debug "SymbolStore: pkg loop done"
     catch err
         bt = catch_backtrace()
         if error_handler !== nothing
@@ -107,24 +115,26 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
             Base.display_error(stderr, err, bt)
         end
     end
-
+    @debug "SymbolStore: getstore waiting for async listener to start"
     take!(server_is_ready)
-
+    @debug "SymbolStore: getstore async listener is ready"
     p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use), stderr=stderr_for_client_process), read=true, write=true)
     ssi.process = p
+    @debug "SymbolStore: opened jl process"
 
     if success(p)
         # Now we create a new symbol store and load everything into that
         # from disc
         new_store = recursive_copy(stdlibs)
-        load_project_packages_into_store!(ssi, environment_path, new_store)
-
+        load_project_packages_into_store!(ssi, environment_path, new_store, progress_callback)
+        @debug "SymbolStore: store success"
         return :success, new_store
     elseif p in ssi.canceled_processes
         delete!(ssi.canceled_processes, p)
-
+        @debug "SymbolStore: store canceled"
         return :canceled, nothing
     else
+        @debug "SymbolStore: store failure"
         if currently_loading_a_package
             return :package_load_crash, (package_name = current_package_name, stderr = stderr_for_client_process)
         else
@@ -133,7 +143,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     end
 end
 
-function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store)
+function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store, progress_callback = nothing)
     project_filename = isfile(joinpath(environment_path, "JuliaProject.toml")) ? joinpath(environment_path, "JuliaProject.toml") : joinpath(environment_path, "Project.toml")
     project = try
         Pkg.API.read_project(project_filename)
@@ -145,9 +155,10 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
     manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
     manifest = read_manifest(manifest_filename)
     manifest === nothing && return
-
-    for uuid in values(deps(project))
-        load_package_from_cache_into_store!(ssi, uuid, manifest, store)
+    uuids = values(deps(project))
+    num_uuids = length(values(deps(project)))
+    for (i, uuid) in enumerate(uuids)
+        load_package_from_cache_into_store!(ssi, uuid, manifest, store, progress_callback, round(Int, 100*(i - 1)/num_uuids))
     end
 end
 
@@ -156,22 +167,28 @@ end
 
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
-function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store)
+function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store, progress_callback = nothing, percentage = missing)
+    @debug "SymbolStore: load_package_from_cache_into_store!"
+    yield()
     isinmanifest(manifest, uuid) || return
     pe = frommanifest(manifest, uuid)
     pe_name = packagename(manifest, uuid)
     haskey(store, Symbol(pe_name)) && return
 
+
     # further existence checks needed?
     cache_path = joinpath(ssi.store_path, get_cache_path(manifest, uuid)...)
     if isfile(cache_path)
+        progress_callback !== nothing && progress_callback("Loading $pe_name from cache...", percentage)
+        @debug "SymbolStore: load_package_from_cache_into_store!: file for $pe_name found"
         try
             package_data = open(cache_path) do io
                 CacheStore.read(io)
             end
             store[Symbol(pe_name)] = package_data.val
+            @debug "SymbolStore: load_package_from_cache_into_store!: loading $pe_name deps"
             for dep in deps(pe)
-                load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store)
+                load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store, progress_callback, percentage)
             end
         catch err
             Base.display_error(stderr, err, catch_backtrace())
