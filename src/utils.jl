@@ -453,68 +453,98 @@ end
 
 # tools to retrieve cache from the cloud
 
-function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir = "../cache", download_dir = "../downloads/")
+function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir = "../cache", download_dir = "../downloads/", symbolcache_upstream = "https://www.julia-vscode.org/symbolcache")
     paths = get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
-    link = string(first(splitext(joinpath("https://www.julia-vscode.org/symbolcache/store/v1/packages", paths...))), ".tar.gz")
+    link = string(first(splitext(join([symbolcache_upstream, "store/v1/packages", paths...], '/'))), ".tar.gz")
+
     dest_filepath = joinpath(cache_dir, paths...)
     dest_filepath_unavailable = string(first(splitext(dest_filepath)), ".unavailable")
     download_dir = joinpath(download_dir, first(splitext(last(paths))))
     download_filepath = joinpath(download_dir, last(paths))
     download_filepath_unavailable = string(first(splitext(download_filepath)), ".unavailable")
+
     @debug "Downloading cache file for $name."
-    if isfile(download_filepath_unavailable)
+    if isfile(dest_filepath_unavailable)
         @info "Cloud was unable to cache $name in the past, we won't try to retrieve it again."
         return false
     end
     file = try
         if Pkg.PlatformEngines.download_verify_unpack(link, nothing, download_dir)
-            !isdir(joinpath(cache_dir, paths[1])) && mkdir(joinpath(cache_dir, paths[1]))
-            !isdir(joinpath(cache_dir, paths[1], paths[2])) && mkdir(joinpath(cache_dir, paths[1], paths[2]))
+            mkpath(dirname(dest_filepath))
             if !isfile(download_filepath) && isfile(download_filepath_unavailable)
                 mv(download_filepath_unavailable, dest_filepath_unavailable)
-                rm(download_dir)
+                @info "Cloud is unable to cache $name, we won't try to retrieve it again."
                 return false
             end
             mv(download_filepath, dest_filepath)
-            rm(download_dir)
+            dest_filepath
+        else
+            nothing
         end
-        dest_filepath
-    catch
+    catch err
+        @info "Couldn't retrieve cache file for $name." exception = err
+        return false
+    end
+
+    if file === nothing
         @info "Couldn't retrieve cache file for $name."
         return false
     end
+
     cache = try
-        CacheStore.read(open(file))
+        open(file, "r") do io
+            CacheStore.read(io)
+        end
     catch
         @info "Couldn't read cache file for $name, deleting."
         rm(file)
         return false
     end
+
     pkg_path = Base.locate_package(Base.PkgId(uuid, name))
-    get_pkg_path(Base.PkgId(uuid, name), environment_path, depot_dir)
     if pkg_path === nothing || !isfile(pkg_path)
-        @info "Couldn't find package on disc."
+        pkg_path = get_pkg_path(Base.PkgId(uuid, name), environment_path, depot_dir)
+    end
+    if pkg_path === nothing
+        @info "Successfully downloaded and saved $(name), but with placeholder paths"
         return false
     end
 
-    modify_dirs(cache.val, f -> modify_dir(f, "PLACEHOLDER", dirname(pkg_path)))
-    CacheStore.write(open(file, "w"), cache)
-    @info "Successfully download, scrubbed and saved $(name)"
+    @debug "dirname" dirname(pkg_path)
+    modify_dirs(cache.val, f -> modify_dir(f, "PLACEHOLDER", joinpath(pkg_path, "src")))
+    open(file, "w") do io
+        CacheStore.write(io, cache)
+    end
+
+    @info "Successfully downloaded, scrubbed and saved $(name)"
     return true
 end
 
 """
     validate_disc_store(store_path, manifest)
 
-This returns a list of packages in the manifest that don't have caches on disc.
+This returns a list of non-jll packages in the manifest that don't have caches on disc.
 """
 function validate_disc_store(store_path, manifest)
     filter(manifest) do pkg
         uuid = packageuuid(pkg)
+        endswith(packagename(manifest, uuid), "_jll") && return false
+
         file_name = joinpath(get_cache_path(manifest, uuid)...)
-        !isfile(joinpath(store_path, file_name)) && !endswith(file_name, "_jll.jstore")
+        return !isfile(joinpath(store_path, file_name))
     end
+end
+
+function find_project_file(env)
+    isdir(env) || return false
+    for filename in ("Project.toml", "JuliaProject.toml")
+        maybe_project_file = joinpath(env, filename)
+        if isfile(maybe_project_file)
+            return maybe_project_file
+        end
+    end
+    return false
 end
 
 """
@@ -523,7 +553,7 @@ end
 Find out where a package is installed without having to load it.
 """
 function get_pkg_path(pkg::Base.PkgId, env, depot_path)
-    project_file = Base.env_project_file(env)
+    project_file = find_project_file(env)
     project_file isa Bool && return nothing
     manifest_file = Base.project_file_manifest_path(project_file)
 
@@ -536,6 +566,7 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
         uuid === nothing && continue
         if UUID(uuid) === pkg.uuid
             path = get(entry, "path", nothing)::Union{Nothing, String}
+            # this can only be true for explicitly dev'ed packages
             if path !== nothing
                 path = normpath(abspath(dirname(manifest_file), path))
                 return path
@@ -543,10 +574,19 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
             hash = get(entry, "git-tree-sha1", nothing)::Union{Nothing, String}
             hash === nothing && return nothing
             hash = Base.SHA1(hash)
-            # Keep the 4 since it used to be the default
-            for slug in (Base.version_slug(pkg.uuid, hash, 4), Base.version_slug(pkg.uuid, hash))
-                path = abspath(depot_path, "packages", pkg.name, slug)
-                ispath(path) && return path
+            # empty default path probably means that we should use the default Julia depots
+            if depot_path == ""
+                depot_paths = []
+                Base.append_default_depot_path!(depot_paths)
+            else
+                depot_paths = [depot_path]
+            end
+            for depot in depot_paths
+                # Keep the 4 since it used to be the default
+                for slug in (Base.version_slug(pkg.uuid, hash, 4), Base.version_slug(pkg.uuid, hash))
+                    path = abspath(depot, "packages", pkg.name, slug)
+                    ispath(path) && return path
+                end
             end
             return nothing
         end
@@ -575,16 +615,13 @@ function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay, percentage =
     end
 end
 
-function write_cache(uuid, pkg::Package, ctx, storedir)
-    isinmanifest(ctx, uuid) || return ""
-    cache_paths = get_cache_path(manifest(ctx), uuid)
-    !isdir(joinpath(storedir, cache_paths[1])) && mkdir(joinpath(storedir, cache_paths[1]))
-    !isdir(joinpath(storedir, cache_paths[1], cache_paths[2])) && mkdir(joinpath(storedir, cache_paths[1], cache_paths[2]))
+function write_cache(uuid, pkg::Package, outpath)
+    mkpath(dirname(outpath))
     @info "Now writing to disc $uuid"
-    open(joinpath(storedir, cache_paths...), "w") do io
+    open(outpath, "w") do io
         CacheStore.write(io, pkg)
     end
-    joinpath(storedir, cache_paths...)
+    outpath
 end
 
 """
@@ -610,7 +647,11 @@ end
 
 function write_depot(server::Server, ctx, written_caches)
     for (uuid, pkg) in server.depot
-        written_path = write_cache(uuid, pkg, ctx,  server.storedir)
+        cache_paths = get_cache_path(manifest(ctx), uuid)
+        outpath = joinpath(server.storedir, cache_paths...)
+        outpath in written_caches && continue
+
+        written_path = write_cache(uuid, pkg, outpath)
         !isempty(written_path) && push!(written_caches, written_path)
     end
 end
