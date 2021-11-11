@@ -47,8 +47,10 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                         progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
                         @sync for pkg in batch
                             @async begin
+                                yield()
                                 uuid = packageuuid(pkg)
                                 get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
+                                yield()
                             end
                         end
                     end
@@ -131,6 +133,8 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr_for_client_process), read=true, write=true)
     ssi.process = p
 
+    yield()
+
     if success(p)
         # Now we create a new symbol store and load everything into that
         # from disc
@@ -177,7 +181,6 @@ end
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store, progress_callback = nothing, percentage = missing)
-    @debug "SymbolStore: load_package_from_cache_into_store!"
     yield()
     isinmanifest(manifest, uuid) || return
     pe = frommanifest(manifest, uuid)
@@ -189,13 +192,11 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
     cache_path = joinpath(ssi.store_path, get_cache_path(manifest, uuid)...)
     if isfile(cache_path)
         progress_callback !== nothing && progress_callback("Loading $pe_name from cache...", percentage)
-        @debug "SymbolStore: load_package_from_cache_into_store!: file for $pe_name found"
         try
             package_data = open(cache_path) do io
                 CacheStore.read(io)
             end
             store[Symbol(pe_name)] = package_data.val
-            @debug "SymbolStore: load_package_from_cache_into_store!: loading $pe_name deps"
             for dep in deps(pe)
                 load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store, progress_callback, percentage)
             end

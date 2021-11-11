@@ -532,6 +532,7 @@ function validate_disc_store(store_path, manifest)
         endswith(packagename(manifest, uuid), "_jll") && return false
 
         file_name = joinpath(get_cache_path(manifest, uuid)...)
+        yield()
         return !isfile(joinpath(store_path, file_name))
     end
 end
