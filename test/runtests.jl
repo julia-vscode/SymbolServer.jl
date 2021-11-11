@@ -116,8 +116,6 @@ end
         if ret_status2 == :failure
             @info String(take!(store2))
         end
-        @info keys(store2)
-        @info readdir(store_path)
 
         @test ret_status2 == :success
         @test length(store2) == 7

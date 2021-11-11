@@ -56,7 +56,7 @@ toplevel_pkgs = deps(project(ctx)) # First get a list of all package UUIds that 
 packages_to_load = []
 # Next make sure the cache is up-to-date for all of these
 for (pk_name, uuid) in toplevel_pkgs
-    uuid = UUID(uuid)
+    uuid isa UUID || (uuid = UUID(uuid))
     if !isinmanifest(ctx, uuid)
         @info "$pk_name not in manifest, skipping."
         continue
