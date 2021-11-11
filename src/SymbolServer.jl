@@ -17,9 +17,13 @@ mutable struct SymbolServerInstance
     depot_path::String
     canceled_processes::Set{Process}
     store_path::String
+    symbolcache_upstream::String
 
-    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing)
-        return new(nothing, depot_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path)
+    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing; symbolcache_upstream = nothing)
+        if symbolcache_upstream === nothing
+            symbolcache_upstream = "https://www.julia-vscode.org/symbolcache"
+        end
+        return new(nothing, depot_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path, symbolcache_upstream)
     end
 end
 
@@ -28,20 +32,32 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     # see if we can download any package cache's before
     if download
+        download_dir = joinpath(ssi.store_path, "_downloads")
+        ispath(download_dir) && rm(download_dir, force = true, recursive = true)
+        mkpath(download_dir)
         manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
         if isfile(manifest_filename)
             let manifest = read_manifest(manifest_filename)
                 if manifest !== nothing
                     @debug "Downloading cache files for manifest at $(manifest_filename)."
-                    asyncmap(collect(validate_disc_store(ssi.store_path, manifest)), ntasks = 10) do pkg
-                        uuid = packageuuid(pkg)
-                        get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, ssi.store_path)
+                    to_download = collect(validate_disc_store(ssi.store_path, manifest))
+                    batches = Iterators.partition(to_download, max(1, floor(Int, length(to_download)÷50)))
+                    for (i, batch) in enumerate(batches)
+                        percentage = round(Int, 100*(i - 1)/length(batches))
+                        progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
+                        @sync for pkg in batch
+                            @async begin
+                                uuid = packageuuid(pkg)
+                                get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
+                            end
+                        end
                     end
+                    progress_callback !== nothing && progress_callback("All cache files downloaded.", 100)
                 end
             end
         end
+        ispath(download_dir) && rm(download_dir, force = true, recursive = true)
     end
-
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
     server_script = joinpath(@__DIR__, "server.jl")
@@ -76,13 +92,10 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         server = Sockets.listen(pipename)
 
         put!(server_is_ready, nothing)
-        @debug "SymbolStore: accept"
         conn = Sockets.accept(server)
 
         while isopen(conn)
-            @debug "SymbolStore: readline"
             s = readline(conn)
-            @debug "SymbolStore: after readline" s
             if isempty(s)
                 continue
             end
@@ -106,7 +119,6 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                 error("Unknown command.")
             end
         end
-        @debug "SymbolStore: pkg loop done"
     catch err
         bt = catch_backtrace()
         if error_handler !== nothing
@@ -115,12 +127,9 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
             Base.display_error(stderr, err, bt)
         end
     end
-    @debug "SymbolStore: getstore waiting for async listener to start"
     take!(server_is_ready)
-    @debug "SymbolStore: getstore async listener is ready"
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use), stderr=stderr_for_client_process), read=true, write=true)
+    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr_for_client_process), read=true, write=true)
     ssi.process = p
-    @debug "SymbolStore: opened jl process"
 
     if success(p)
         # Now we create a new symbol store and load everything into that
