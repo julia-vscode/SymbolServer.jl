@@ -55,9 +55,12 @@ written_caches = String[] # List of caches that have already been written
 toplevel_pkgs = deps(project(ctx)) # First get a list of all package UUIds that we want to cache
 packages_to_load = []
 # Next make sure the cache is up-to-date for all of these
-
 for (pk_name, uuid) in toplevel_pkgs
-    isinmanifest(ctx, uuid) || continue
+    uuid = UUID(uuid)
+    if !isinmanifest(ctx, uuid)
+        @info "$pk_name not in manifest, skipping."
+        continue
+    end
     pe = frommanifest(manifest(ctx), uuid)
     cache_path = joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), uuid)...)
 
