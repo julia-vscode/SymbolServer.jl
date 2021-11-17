@@ -85,6 +85,7 @@ end
             x = getfield(Base, n)
             if x isa UnionAll && Base.unwrap_unionall(x) isa DataType && parentmodule(Base.unwrap_unionall(x)) == Base
                 @test SymbolServer.stdlibs[:Base][n] isa SymbolServer.DataTypeStore
+                @test SymbolServer.stdlibs[:Base][n].doc != ""
             end
         end
     end
