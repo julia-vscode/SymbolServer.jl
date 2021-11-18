@@ -140,7 +140,7 @@ end
         @test !isempty(SymbolServer.stdlibs[:Base][:Libc].doc)         # Module
         @test !isempty(SymbolServer.stdlibs[:Base][:LinRange].doc)     # UnionAll
         @test !isempty(SymbolServer.stdlibs[:Base][:VecOrMat].doc)     # Union
-        @test contains(SymbolServer.stdlibs[:Base][:Cint].doc, "Cint") # Alias
+        @test occursin("Cint", SymbolServer.stdlibs[:Base][:Cint].doc) # Alias
     end
 end
 
