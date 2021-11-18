@@ -16,7 +16,7 @@ struct ModuleStore <: SymStore
     used_modules::Vector{Symbol}
 end
 
-ModuleStore(m) = ModuleStore(VarRef(m), Dict{Symbol,Any}(), _doc(m), true, unsorted_names(m), Symbol[])
+ModuleStore(m) = ModuleStore(VarRef(m), Dict{Symbol,Any}(), _doc(Base.Docs.Binding(m, nameof(m))), true, unsorted_names(m), Symbol[])
 Base.getindex(m::ModuleStore, k) = m.vals[k]
 Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
 Base.haskey(m::ModuleStore, k) = haskey(m.vals, k)
@@ -482,7 +482,7 @@ function load_core(; get_return_type = false)
     end
 
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
-    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main), true)
+    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Base.Docs.Binding(Main, :Main)), true)
     # Add built-ins
     builtins = Symbol[nameof(getfield(Core, n).instance) for n in unsorted_names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
     cnames = unsorted_names(Core)
