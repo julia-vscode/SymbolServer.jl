@@ -89,10 +89,6 @@ end
         end
     end
 
-    @testset "UnionAll documentation" begin
-        @test !isempty(SymbolServer.stdlibs[:Base][:LinRange].doc)
-    end
-
     mktempdir() do path
         cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
         cp(joinpath(@__DIR__, "testenv", "Manifest.toml"), joinpath(path, "Manifest.toml"))
@@ -137,6 +133,15 @@ end
     end
 
     @test SymbolServer.stdlibs[:Base][:Sort][:sort] isa SymbolServer.FunctionStore
+
+    @testset "symbol documentation" begin
+        @test !isempty(SymbolServer.stdlibs[:Base][:abs].doc)          # Function
+        @test !isempty(SymbolServer.stdlibs[:Base][:Pair].doc)         # DataType
+        @test !isempty(SymbolServer.stdlibs[:Base][:Libc].doc)         # Module
+        @test !isempty(SymbolServer.stdlibs[:Base][:LinRange].doc)     # UnionAll
+        @test !isempty(SymbolServer.stdlibs[:Base][:VecOrMat].doc)     # Union
+        @test contains(SymbolServer.stdlibs[:Base][:Cint].doc, "Cint") # Alias
+    end
 end
 
 using SymbolServer: FakeTypeName
