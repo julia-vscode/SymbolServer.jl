@@ -179,10 +179,8 @@ function sha_pkg(pe::PackageEntry)
     path(pe) isa String && isdir(path(pe)) && isdir(joinpath(path(pe), "src")) ? sha2_256_dir(joinpath(path(pe), "src")) : nothing
 end
 
-function _doc(@nospecialize(object))
+function _doc(binding::Base.Docs.Binding)
     try
-        binding = Base.Docs.aliasof(object, typeof(object))
-        !(binding isa Base.Docs.Binding) && return ""
         sig = Union{}
         if Base.Docs.defined(binding)
             result = Base.Docs.getdoc(Base.Docs.resolve(binding), sig)

@@ -16,7 +16,7 @@ struct ModuleStore <: SymStore
     used_modules::Vector{Symbol}
 end
 
-ModuleStore(m) = ModuleStore(VarRef(m), Dict{Symbol,Any}(), "", true, unsorted_names(m), Symbol[])
+ModuleStore(m) = ModuleStore(VarRef(m), Dict{Symbol,Any}(), _doc(Base.Docs.Binding(m, nameof(m))), true, unsorted_names(m), Symbol[])
 Base.getindex(m::ModuleStore, k) = m.vals[k]
 Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
 Base.haskey(m::ModuleStore, k) = haskey(m.vals, k)
@@ -52,7 +52,7 @@ struct DataTypeStore <: SymStore
     exported::Bool
 end
 
-function DataTypeStore(@nospecialize(t), parent_mod, exported)
+function DataTypeStore(@nospecialize(t), symbol, parent_mod, exported)
     ur_t = Base.unwrap_unionall(t)
     parameters = if isdefined(ur_t, :parameters)
         map(ur_t.parameters) do p
@@ -68,7 +68,7 @@ function DataTypeStore(@nospecialize(t), parent_mod, exported)
     else
         []
     end
-    DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, isconcretetype(ur_t) && fieldcount(ur_t) > 0 ? collect(fieldnames(ur_t)) : Symbol[], MethodStore[], _doc(t), exported)
+    DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, isconcretetype(ur_t) && fieldcount(ur_t) > 0 ? collect(fieldnames(ur_t)) : Symbol[], MethodStore[], _doc(Base.Docs.Binding(parent_mod, symbol)), exported)
 end
 
 struct FunctionStore <: SymStore
@@ -79,11 +79,11 @@ struct FunctionStore <: SymStore
     exported::Bool
 end
 
-function FunctionStore(@nospecialize(f), parent_mod, exported)
+function FunctionStore(@nospecialize(f), symbol, parent_mod, exported)
     if f isa Core.IntrinsicFunction
-        FunctionStore(VarRef(VarRef(Core.Intrinsics), nameof(f)), MethodStore[], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+        FunctionStore(VarRef(VarRef(Core.Intrinsics), nameof(f)), MethodStore[], _doc(Base.Docs.Binding(parent_mod, symbol)), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
     else
-        FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), MethodStore[], _doc(f), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
+        FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), MethodStore[], _doc(Base.Docs.Binding(parent_mod, symbol)), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
     end
 end
 
@@ -411,11 +411,11 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
             x = getfield(m, s)
             if Base.unwrap_unionall(x) isa DataType # Unions aren't handled here.
                 if parentmodule((x)) === m
-                    cache[s] = DataTypeStore(x, m, s in getnames(m))
+                    cache[s] = DataTypeStore(x, s, m, s in getnames(m))
                     cache_methods(x, s, env, get_return_type)
                 elseif nameof(x) !== s
                     # This needs some finessing.
-                    cache[s] = DataTypeStore(x, m, s in getnames(m))
+                    cache[s] = DataTypeStore(x, s, m, s in getnames(m))
                     ms = cache_methods(x, s, env, get_return_type)
                     # A slightly difficult case. `s` is probably a shadow binding of `x` but we should store the methods nonetheless.
                     # Example: DataFrames.Not points to InvertedIndices.InvertedIndex
@@ -428,7 +428,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                 end
             elseif x isa Function
                 if parentmodule(x) === m || (x isa Core.IntrinsicFunction && m === Core.Intrinsics)
-                    cache[s] = FunctionStore(x, m, s in getnames(m))
+                    cache[s] = FunctionStore(x, s, m, s in getnames(m))
                     cache_methods(x, s, env, get_return_type)
                 elseif !haskey(cache, s)
                     # This will be replaced at a later point by a FunctionStore if methods for `x` are defined within `m`.
@@ -455,7 +455,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                     cache[s] = VarRef(x)
                 end
             else
-                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
+                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(Base.Docs.Binding(m, s)), s in getnames(m))
             end
         end
     else
@@ -482,13 +482,13 @@ function load_core(; get_return_type = false)
     end
 
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
-    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main), true)
+    cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Base.Docs.Binding(Main, :Main)), true)
     # Add built-ins
     builtins = Symbol[nameof(getfield(Core, n).instance) for n in unsorted_names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
     cnames = unsorted_names(Core)
     for f in builtins
         if !haskey(cache[:Core], f)
-            cache[:Core][f] = FunctionStore(getfield(Core, Symbol(f)), Core, Symbol(f) in cnames)
+            cache[:Core][f] = FunctionStore(getfield(Core, Symbol(f)), Symbol(f), Core, Symbol(f) in cnames)
         end
     end
     haskey(cache[:Core], :_typevar) && push!(cache[:Core][:_typevar].methods, MethodStore(:_typevar, :Core, "built-in", 0, [:n => FakeTypeName(Symbol), :lb => FakeTypeName(Any), :ub => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
