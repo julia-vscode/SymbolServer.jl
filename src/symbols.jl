@@ -455,7 +455,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                     cache[s] = VarRef(x)
                 end
             else
-                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(x), s in getnames(m))
+                cache[s] = GenericStore(VarRef(VarRef(m), s), FakeTypeName(typeof(x)), _doc(Base.Docs.Binding(m, s)), s in getnames(m))
             end
         end
     else
