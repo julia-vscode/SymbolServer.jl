@@ -87,7 +87,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     currently_loading_a_package = false
     current_package_name = ""
 
-    pipename = Sys.iswindows() ? "\\\\.\\pipe\\vscjlsymserv-$(UUIDs.uuid4())" : joinpath(tempdir(), "vscjlsymserv-$(UUIDs.uuid4())")
+    pipename = pipe_name()
 
     server_is_ready = Channel(1)
     @async try
@@ -154,6 +154,28 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
             return :failure, stderr_for_client_process
         end
     end
+end
+
+function pipe_name()
+    if Sys.iswindows()
+        return "\\\\.\\pipe\\vscjlsymserv-$(UUIDs.uuid4())"
+    end
+    # Pipe names on unix may only be 92 chars (JuliaLang/julia#43281), and since
+    # tempdir can be arbitrary long (in particular on macos) we try to keep the name
+    # within bounds here.
+    prefix = "vscjlsymserv-"
+    uuid = string(UUIDs.uuid4())
+    pipename = joinpath(tempdir(), prefix * uuid[1:13])
+    if length(pipename) >= 92
+        # Try to use /tmp and if that fails, hope the long pipe name works anyway
+        maybe = "/tmp/" * prefix * uuid
+        try
+            touch(maybe); rm(maybe) # Check permissions on this path
+            pipename = maybe
+        catch
+        end
+    end
+    return pipename
 end
 
 function load_project_packages_into_store!(ssi::SymbolServerInstance, environment_path, store, progress_callback = nothing)
