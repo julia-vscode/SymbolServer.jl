@@ -163,6 +163,35 @@ using SymbolServer: FakeTypeName
     end
 end
 
+import UUIDs
+@testset "Pipe names" begin
+    if Sys.iswindows()
+        p = SymbolServer.pipe_name()
+        @test occursin(r"^\\\\\.\\pipe\\vscjlsymserv-\w{8}-(?:\w{4}-?){3}\w{12}$", p)
+    else
+        tmp_access = try
+            n = "/tmp/" * string(UUIDs.uuid4())
+            touch(n); rm(n)
+            true
+        catch
+            false
+        end
+        too_long = joinpath(tempdir(), string(UUIDs.uuid4())^3)
+        mkdir(too_long)
+        for TEMPDIR in (tempdir(), too_long); withenv("TEMPDIR" => TEMPDIR) do
+            p = SymbolServer.pipe_name()
+            #         TEMPDIR    + / + prefix                  + UUID[1:13]
+            if length(tempdir()) + 1 + length("vscjlsymserv-") + 13 < 92 || !tmp_access
+                @test startswith(p, tempdir())
+                @test occursin(r"^vscjlsymserv-\w{8}-\w{4}$", basename(p))
+            else
+                @test occursin(r"^/tmp/vscjlsymserv-\w{8}(?:-\w{4}){3}-\w{12}$", p)
+            end
+        end end
+        rm(too_long; recursive=true)
+    end
+end
+
 @testset "Intrinsics`" begin
     @test !isempty(SymbolServer.stdlibs[:Core][:Intrinsics].vals[:llvmcall].methods)
 end
