@@ -136,7 +136,11 @@ end
 
     @testset "symbol documentation" begin
         @test !isempty(SymbolServer.stdlibs[:Base][:abs].doc)          # Function
-        @test !isempty(SymbolServer.stdlibs[:Base][:Pair].doc)         # DataType
+        if VERSION >= v"1.7"
+            @test !isempty(SymbolServer.stdlibs[:Core][:Pair].doc)         # DataType
+        else
+            @test !isempty(SymbolServer.stdlibs[:Base][:Pair].doc)         # DataType
+        end
         @test !isempty(SymbolServer.stdlibs[:Base][:Libc].doc)         # Module
         @test !isempty(SymbolServer.stdlibs[:Base][:LinRange].doc)     # UnionAll
         @test !isempty(SymbolServer.stdlibs[:Base][:VecOrMat].doc)     # Union
