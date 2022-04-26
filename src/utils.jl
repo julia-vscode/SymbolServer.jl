@@ -445,13 +445,13 @@ pkg_src_dir(m::Module) = dirname(pathof(m))
 function modify_dir(f, s1, s2)
     # @assert startswith(f, s1)
     # Removed assertion because of Enums issue
-    string(s2, f[length(s1)+1:end])
+    replace(f, s1 => s2)
 end
 
 
 # tools to retrieve cache from the cloud
 
-function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir = "../cache", download_dir = "../downloads/", symbolcache_upstream = "https://www.julia-vscode.org/symbolcache")
+function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir="../cache", download_dir="../downloads/", symbolcache_upstream="https://www.julia-vscode.org/symbolcache")
     paths = get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
     link = string(first(splitext(join([symbolcache_upstream, "store/v1/packages", paths...], '/'))), ".tar.gz")
@@ -510,7 +510,7 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
     end
 
     @debug "dirname" dirname(pkg_path)
-    modify_dirs(cache.val, f -> modify_dir(f, "PLACEHOLDER", joinpath(pkg_path, "src")))
+    modify_dirs(cache.val, f -> modify_dir(f, r"^PLACEHOLDER", joinpath(pkg_path, "src")))
     open(file, "w") do io
         CacheStore.write(io, cache)
     end
@@ -557,20 +557,26 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     manifest_file = Base.project_file_manifest_path(project_file)
 
     d = Base.parsed_toml(manifest_file)
-    entries = get(d, pkg.name, nothing)::Union{Nothing, Vector{Any}}
+    if get(d, "manifest_format", "0.0") == "2.0"
+        entries = get(d, "deps", nothing)
+        entries === nothing && return nothing
+        entries = map(e -> e[1], values(entries))
+    else
+        entries = get(d, pkg.name, nothing)::Union{Nothing,Vector{Any}}
+    end
     entries === nothing && return nothing # TODO: allow name to mismatch?
     for entry in entries
-        entry = entry::Dict{String, Any}
-        uuid = get(entry, "uuid", nothing)::Union{Nothing, String}
+        entry = entry::Dict{String,Any}
+        uuid = get(entry, "uuid", nothing)::Union{Nothing,String}
         uuid === nothing && continue
         if UUID(uuid) === pkg.uuid
-            path = get(entry, "path", nothing)::Union{Nothing, String}
+            path = get(entry, "path", nothing)::Union{Nothing,String}
             # this can only be true for explicitly dev'ed packages
             if path !== nothing
                 path = normpath(abspath(dirname(manifest_file), path))
                 return path
             end
-            hash = get(entry, "git-tree-sha1", nothing)::Union{Nothing, String}
+            hash = get(entry, "git-tree-sha1", nothing)::Union{Nothing,String}
             hash === nothing && return nothing
             hash = Base.SHA1(hash)
             # empty default path probably means that we should use the default Julia depots
