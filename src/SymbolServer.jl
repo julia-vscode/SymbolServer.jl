@@ -219,12 +219,11 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, en
                 CacheStore.read(io)
             end
 
-            pkg_path = Base.locate_package(Base.PkgId(uuid, pe_name))
+            pkg_path = Base.locate_package(Base.PkgId(UUID(uuid), pe_name))
             if pkg_path === nothing || !isfile(pkg_path)
-                pkg_path = get_pkg_path(Base.PkgId(uuid, pe_name), environment_path, ssi.depot_path)
+                pkg_path = get_pkg_path(Base.PkgId(UUID(uuid), pe_name), environment_path, ssi.depot_path)
             end
             if pkg_path !== nothing
-                progress_callback("Successfully located $pe_name, fixing paths...", percentage)
                 modify_dirs(package_data.val, f -> modify_dir(f, r"^PLACEHOLDER", joinpath(pkg_path, "src")))
             end
 
