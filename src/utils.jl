@@ -1,7 +1,15 @@
+using Pkg
+
 @static if VERSION < v"1.1"
     const PackageEntry = Vector{Dict{String,Any}}
 else
     using Pkg.Types: PackageEntry
+end
+
+@static if isdefined(Base, :parsed_toml)
+    parsed_toml(args...) = Base.parsed_toml(args...)
+else
+    parsed_toml(file) = Pkg.TOML.parsefile(file)
 end
 
 """
@@ -556,7 +564,7 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     project_file isa Bool && return nothing
     manifest_file = Base.project_file_manifest_path(project_file)
 
-    d = Base.parsed_toml(manifest_file)
+    d = parsed_toml(manifest_file)
     if get(d, "manifest_format", "0.0") == "2.0"
         entries = get(d, "deps", nothing)
         entries === nothing && return nothing
