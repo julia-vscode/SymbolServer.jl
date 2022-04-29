@@ -194,7 +194,7 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
     uuids = values(deps(project))
     num_uuids = length(values(deps(project)))
     for (i, uuid) in enumerate(uuids)
-        load_package_from_cache_into_store!(ssi, uuid, manifest, store, progress_callback, round(Int, 100*(i - 1)/num_uuids))
+        load_package_from_cache_into_store!(ssi, uuid isa UUID ? uuid : UUID(uuid), environment_path, manifest, store, progress_callback, round(Int, 100 * (i - 1) / num_uuids))
     end
 end
 
@@ -203,7 +203,7 @@ end
 
 Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
 """
-function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, manifest, store, progress_callback = nothing, percentage = missing)
+function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UUID, environment_path, manifest, store, progress_callback = nothing, percentage = missing)
     yield()
     isinmanifest(manifest, uuid) || return
     pe = frommanifest(manifest, uuid)
@@ -219,9 +219,18 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid, ma
             package_data = open(cache_path) do io
                 CacheStore.read(io)
             end
+
+            pkg_path = Base.locate_package(Base.PkgId(uuid, pe_name))
+            if pkg_path === nothing || !isfile(pkg_path)
+                pkg_path = get_pkg_path(Base.PkgId(uuid, pe_name), environment_path, ssi.depot_path)
+            end
+            if pkg_path !== nothing
+                modify_dirs(package_data.val, f -> modify_dir(f, r"^PLACEHOLDER", joinpath(pkg_path, "src")))
+            end
+
             store[Symbol(pe_name)] = package_data.val
             for dep in deps(pe)
-                load_package_from_cache_into_store!(ssi, packageuuid(dep), manifest, store, progress_callback, percentage)
+                load_package_from_cache_into_store!(ssi, packageuuid(dep), environment_path, manifest, store, progress_callback, percentage)
             end
         catch err
             Base.display_error(stderr, err, catch_backtrace())
