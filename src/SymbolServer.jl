@@ -194,7 +194,7 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
     uuids = values(deps(project))
     num_uuids = length(values(deps(project)))
     for (i, uuid) in enumerate(uuids)
-        load_package_from_cache_into_store!(ssi, UUID(uuid), environment_path, manifest, store, progress_callback, round(Int, 100 * (i - 1) / num_uuids))
+        load_package_from_cache_into_store!(ssi, uuid isa UUID ? uuid : UUID(uuid), environment_path, manifest, store, progress_callback, round(Int, 100 * (i - 1) / num_uuids))
     end
 end
 
