@@ -570,7 +570,7 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
         entries === nothing && return nothing
         entries = map(e -> e[1], values(entries))
     else
-        entries = get(d, pkg.name, nothing)::Union{Nothing,Vector{Any}}
+        entries = get(d, pkg.name, nothing)
     end
     entries === nothing && return nothing # TODO: allow name to mismatch?
     for entry in entries
@@ -590,7 +590,11 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
             # empty default path probably means that we should use the default Julia depots
             if depot_path == ""
                 depot_paths = []
-                Base.append_default_depot_path!(depot_paths)
+                if isdefined(Base, :append_default_depot_path!)
+                    Base.append_default_depot_path!(depot_paths)
+                else
+                    depot_paths = Pkg.depots()
+                end
             else
                 depot_paths = [depot_path]
             end
