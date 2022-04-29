@@ -32,33 +32,34 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     # see if we can download any package cache's before
     if download
-        download_dir = joinpath(ssi.store_path, "_downloads")
-        ispath(download_dir) && rm(download_dir, force = true, recursive = true)
-        mkpath(download_dir)
-        manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
-        if isfile(manifest_filename)
-            let manifest = read_manifest(manifest_filename)
-                if manifest !== nothing
-                    @debug "Downloading cache files for manifest at $(manifest_filename)."
-                    to_download = collect(validate_disc_store(ssi.store_path, manifest))
-                    batches = Iterators.partition(to_download, max(1, floor(Int, length(to_download)÷50)))
-                    for (i, batch) in enumerate(batches)
-                        percentage = round(Int, 100*(i - 1)/length(batches))
-                        progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
-                        @sync for pkg in batch
-                            @async begin
-                                yield()
-                                uuid = packageuuid(pkg)
-                                get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
-                                yield()
+        download_dir_parent = joinpath(ssi.store_path, "_downloads")
+        mkpath(download_dir_parent)
+
+        mktempdir(download_dir_parent) do download_dir
+            manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
+            if isfile(manifest_filename)
+                let manifest = read_manifest(manifest_filename)
+                    if manifest !== nothing
+                        @debug "Downloading cache files for manifest at $(manifest_filename)."
+                        to_download = collect(validate_disc_store(ssi.store_path, manifest))
+                        batches = Iterators.partition(to_download, max(1, floor(Int, length(to_download)÷50)))
+                        for (i, batch) in enumerate(batches)
+                            percentage = round(Int, 100*(i - 1)/length(batches))
+                            progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
+                            @sync for pkg in batch
+                                @async begin
+                                    yield()
+                                    uuid = packageuuid(pkg)
+                                    get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
+                                    yield()
+                                end
                             end
                         end
+                        progress_callback !== nothing && progress_callback("All cache files downloaded.", 100)
                     end
-                    progress_callback !== nothing && progress_callback("All cache files downloaded.", 100)
                 end
             end
         end
-        ispath(download_dir) && rm(download_dir, force = true, recursive = true)
     end
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
