@@ -508,17 +508,20 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
         return false
     end
 
-    pkg_path = Base.locate_package(Base.PkgId(uuid, name))
-    if pkg_path === nothing || !isfile(pkg_path)
-        pkg_path = get_pkg_path(Base.PkgId(uuid, name), environment_path, depot_dir)
-    end
-    if pkg_path === nothing
-        @info "Successfully downloaded and saved $(name), but with placeholder paths"
-        return false
+    pkg_entry = Base.locate_package(Base.PkgId(uuid, name))
+    if pkg_entry !== nothing && isfile(pkg_entry)
+        pkg_src = dirname(pkg_entry)
+    else
+        pkg_root = get_pkg_path(Base.PkgId(uuid, name), environment_path, depot_dir)
+        if pkg_root === nothing
+            @info "Successfully downloaded and saved $(name), but with placeholder paths"
+            return false
+        end
+        pkg_src = joinpath(pkg_root, "src")
     end
 
-    @debug "dirname" dirname(pkg_path)
-    modify_dirs(cache.val, f -> modify_dir(f, r"^PLACEHOLDER", joinpath(pkg_path, "src")))
+    @debug "Replacing PLACEHOLDER with:" pkg_src
+    modify_dirs(cache.val, f -> modify_dir(f, r"^PLACEHOLDER", pkg_src))
     open(file, "w") do io
         CacheStore.write(io, cache)
     end
