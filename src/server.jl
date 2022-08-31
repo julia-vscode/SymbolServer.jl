@@ -1,5 +1,7 @@
 module SymbolServer
 
+!in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib") # Make sure we can load stdlibs
+
 import Sockets
 pipename = length(ARGS) > 1 ? ARGS[2] : nothing
 conn = pipename !== nothing ? Sockets.connect(pipename) : nothing
@@ -23,7 +25,6 @@ end
 module LoadingBay
 end
 
-!in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib") # Make sure we can load stdlibs
 using Pkg, SHA
 using Base: UUID
 
