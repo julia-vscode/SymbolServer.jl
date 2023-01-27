@@ -143,7 +143,7 @@ else
     packageuuid(pkg::Pair{String,UUID}) = last(pkg)
     packageuuid(pkg::Pair{UUID,PackageEntry}) = first(pkg)
 
-    packagename(pkg::Pair{UUID,PackageEntry})::String = last(pkg).name
+    packagename(pkg::Pair{UUID,PackageEntry})::Union{Nothing,String} = last(pkg).name
     packagename(c::Pkg.Types.Context, uuid::UUID) = manifest(c)[uuid].name
     packagename(manifest::Dict{UUID,PackageEntry}, uuid::UUID) = manifest[uuid].name
 
@@ -162,7 +162,8 @@ else
     version(pe::Pair{UUID,PackageEntry}) = last(pe).version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID,PackageEntry}, uuid) = manifest[uuid]
-    tree_hash(pe::PackageEntry) = VERSION >= v"1.3" ? pe.tree_hash : get(pe.other, "git-tree-sha1", nothing)
+    tree_hash(pkg::Pair{UUID,PackageEntry}) = tree_hash(last(pkg))
+    tree_hash(pe::PackageEntry) = VERSION >= v"1.3" ? pe.tree_hash : (pe.other === nothing ? nothing : get(pe.other, "git-tree-sha1", nothing))
 
     is_package_deved(manifest, uuid) = manifest[uuid].path !== nothing
 end

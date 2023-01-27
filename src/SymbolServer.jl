@@ -27,6 +27,49 @@ mutable struct SymbolServerInstance
     end
 end
 
+function get_general_pkgs()
+    @static if VERSION >= v"1.7-"
+        regs = Pkg.Types.Context().registries
+        i = findfirst(r -> r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106"), regs)
+        i === nothing && error("Could not find the General registry")
+        return regs[i].pkgs
+    else
+        for r in Pkg.Types.collect_registries()
+            (r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106")) || continue
+            reg = Pkg.Types.read_registry(joinpath(r.path, "Registry.toml"))
+            return reg["packages"]
+        end
+        error("Could not find the General registry")
+    end
+end
+
+"""
+    remove_non_general_pkgs!(pkgs)
+
+Removes packages that aren't going to be on the symbol cache server because they aren't in the General registry.
+This avoids leaking private package name & uuid pairs via the url requests to the symbol server.
+"""
+function remove_non_general_pkgs!(pkgs)
+    general_pkgs = get_general_pkgs()
+    filter!(pkgs) do pkg
+        packageuuid(pkg) === nothing && return false
+        packagename(pkg) === nothing && return false
+        tree_hash(pkg) === nothing && return false # stdlibs and dev-ed packages don't have tree_hash and aren't cached
+        @static if VERSION >= v"1.7-"
+            uuid_match = get(general_pkgs, packageuuid(pkg), nothing)
+            uuid_match === nothing && return false
+            uuid_match.name != packagename(pkg) && return false
+            return true
+        else
+            uuid_match = get(general_pkgs, string(packageuuid(pkg)), nothing)
+            uuid_match === nothing && return false
+            uuid_match["name"] != packagename(pkg) && return false
+            return true
+        end
+    end
+    return pkgs
+end
+
 function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = false)
     !ispath(environment_path) && return :success, recursive_copy(stdlibs)
 
@@ -42,20 +85,29 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                     if manifest !== nothing
                         @debug "Downloading cache files for manifest at $(manifest_filename)."
                         to_download = collect(validate_disc_store(ssi.store_path, manifest))
-                        batches = Iterators.partition(to_download, max(1, floor(Int, length(to_download)÷50)))
-                        for (i, batch) in enumerate(batches)
-                            percentage = round(Int, 100*(i - 1)/length(batches))
-                            progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
-                            @sync for pkg in batch
+                        try
+                            remove_non_general_pkgs!(to_download)
+                        catch err
+                            @error """
+                            Symbol cache downloading: Failed to identify which packages to omit based on the General registry.
+                            All packages will be processsed locally""" err
+                            empty!(to_download)
+                        end
+                        if !isempty(to_download)
+                            n_done = 0
+                            @sync for pkg in to_download
                                 @async begin
                                     yield()
                                     uuid = packageuuid(pkg)
                                     get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
                                     yield()
+                                    n_done += 1
+                                    percentage = round(Int, 100*(n_done)/length(to_download))
+                                    progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
                                 end
                             end
+                            progress_callback !== nothing && progress_callback("All cache files downloaded.", 100)
                         end
-                        progress_callback !== nothing && progress_callback("All cache files downloaded.", 100)
                     end
                 end
             end
