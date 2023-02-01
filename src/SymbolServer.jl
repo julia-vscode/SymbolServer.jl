@@ -105,8 +105,8 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                         if !isempty(to_download)
                             n_done = 0
                             n_total = length(to_download)
-                            @sync for batch in Iterators.partition(to_download, 100) # 100 connections at a time
-                                for pkg in batch
+                            for batch in Iterators.partition(to_download, 100) # 100 connections at a time
+                                @sync for pkg in batch
                                     @async begin
                                         yield()
                                         uuid = packageuuid(pkg)
