@@ -31,7 +31,7 @@ function get_general_pkgs()
     @static if VERSION >= v"1.7-"
         regs = Pkg.Types.Context().registries
         i = findfirst(r -> r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106"), regs)
-        i === nothing && error("Could not find the General registry")
+        i === nothing && return Dict{UUID, PkgEntry}()
         return regs[i].pkgs
     else
         for r in Pkg.Types.collect_registries()
@@ -39,7 +39,7 @@ function get_general_pkgs()
             reg = Pkg.Types.read_registry(joinpath(r.path, "Registry.toml"))
             return reg["packages"]
         end
-        error("Could not find the General registry")
+        return Dict{UUID, PkgEntry}()
     end
 end
 
@@ -48,9 +48,17 @@ end
 
 Removes packages that aren't going to be on the symbol cache server because they aren't in the General registry.
 This avoids leaking private package name & uuid pairs via the url requests to the symbol server.
+
+If the General registry cannot be found packages cannot be checked, so all packages will be removed.
 """
 function remove_non_general_pkgs!(pkgs)
     general_pkgs = get_general_pkgs()
+    if isempty(general_pkgs)
+        @warn """
+        Could not find the General registry when checking for whether packages are public.
+        All package symbol caches will be generated locally"""
+        return empty!(pkgs)
+    end
     filter!(pkgs) do pkg
         packageuuid(pkg) === nothing && return false
         packagename(pkg) === nothing && return false
@@ -88,6 +96,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                         try
                             remove_non_general_pkgs!(to_download)
                         catch err
+                            # if any errors, err on the side of caution and mark all as private, and continue
                             @error """
                             Symbol cache downloading: Failed to identify which packages to omit based on the General registry.
                             All packages will be processsed locally""" err
@@ -95,15 +104,18 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                         end
                         if !isempty(to_download)
                             n_done = 0
-                            @sync for pkg in to_download
-                                @async begin
-                                    yield()
-                                    uuid = packageuuid(pkg)
-                                    get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
-                                    yield()
-                                    n_done += 1
-                                    percentage = round(Int, 100*(n_done)/length(to_download))
-                                    progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
+                            n_total = length(to_download)
+                            @sync for batch in Iterators.partition(to_download, 100) # 100 connections at a time
+                                for pkg in batch
+                                    @async begin
+                                        yield()
+                                        uuid = packageuuid(pkg)
+                                        get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
+                                        yield()
+                                        n_done += 1
+                                        percentage = round(Int, 100*(n_done/n_total))
+                                        progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
+                                    end
                                 end
                             end
                             progress_callback !== nothing && progress_callback("All cache files downloaded.", 100)
