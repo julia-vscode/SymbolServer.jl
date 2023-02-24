@@ -52,7 +52,7 @@ struct DataTypeStore <: SymStore
     exported::Bool
     function DataTypeStore(names, super, parameters, types, fieldnames, methods, doc, exported)
         if length(types) < length(fieldnames)
-            error("Only $(length(types)) types were loaded for $(length(fieldnames)) fieldnames. SymbolServer may recalculate the cache. $(Base.@locals)")
+            error("Only $(length(types)) types were loaded for $(length(fieldnames)) fieldnames. SymbolServer may recalculate the cache.")
         end
         new(names, super, parameters, types, fieldnames, methods, doc, exported)
     end
@@ -183,7 +183,7 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         # Get inferred method return type
         if get_return_type
             sparams = Core.svec(sparam_syms(m[3])...)
-            rt = try 
+            rt = try
             rt = try
                 @static if isdefined(Core.Compiler, :NativeInterpreter)
                 Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
