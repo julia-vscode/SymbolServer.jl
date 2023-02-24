@@ -184,12 +184,11 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         if get_return_type
             sparams = Core.svec(sparam_syms(m[3])...)
             rt = try
-            rt = try
                 @static if isdefined(Core.Compiler, :NativeInterpreter)
-                Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
-            else
-                Core.Compiler.typeinf_type(m[3], m[3].sig, sparams, Core.Compiler.Params(world))
-            end
+                    Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
+                else
+                    Core.Compiler.typeinf_type(m[3], m[3].sig, sparams, Core.Compiler.Params(world))
+                end
             catch e
                 Any
             end
