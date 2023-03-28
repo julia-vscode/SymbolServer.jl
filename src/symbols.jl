@@ -601,7 +601,7 @@ getallns() = let allns = Base.IdSet{Symbol}(); oneverything((m, s, x, state) -> 
 """
     split_module_names(m::Module, allns)
 
-Return two lists of names accessible from calling getfield(m, somename)`. The first
+Return two lists of names accessible from calling `getfield(m, somename)`. The first
 contains those symbols returned by `Base.names(m, all = true)`. The second contains
 all others, including imported symbols and those introduced by the `using` of modules.
 """
