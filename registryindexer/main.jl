@@ -27,7 +27,7 @@ function get_all_package_versions(;max_versions=typemax(Int))
         }) |>
         @mutate(
             versions = (Pkg.TOML.parsefile(joinpath(registry_folder_path, _.path, "Versions.toml")) |>
-                @map(i->{version=VersionNumber(i[1]), treehash=i[2]["git-tree-sha1"]}) |> 
+                @map(i->{version=VersionNumber(i[1]), treehash=i[2]["git-tree-sha1"]}) |>
                 @orderby_descending(i->i.version) |>
                 @take(max_versions) |>
                 collect)
@@ -119,9 +119,9 @@ true || asyncmap(julia_versions) do v
             #     error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
 
             #     # Write them to a file
-            #     open(joinpath(path, error_filename), "w") do io                    
+            #     open(joinpath(path, error_filename), "w") do io
             #     end
-            
+
             #     Pkg.PlatformEngines.package(path, cache_path)
             # end
 
@@ -186,7 +186,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     cache_path_compressed = joinpath(cache_path, "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
     mktempdir() do path
-        res = execute(`docker run --rm --mount type=bind,source="$path",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+        res = execute(`docker run --rm --mount type=bind,source="$path",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash) /symcache`)
 
         if res.code==37 # This is our magic error code that indicates everything worked
             global count_successfully_cached += 1
@@ -209,7 +209,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             isfile(joinpath(path, error_filename)) && rm(joinpath(path, error_filename))
 
             # Write them to a file
-            open(joinpath(path, error_filename), "w") do io                    
+            open(joinpath(path, error_filename), "w") do io
             end
 
             open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
