@@ -111,7 +111,7 @@ function isinmanifest end
     deps(d::Dict{String,Any}) = get(d, "deps", Dict{String,Any}())
     deps(pe::PackageEntry) = get(pe[1], "deps", Dict{String,Any}())
     path(pe::PackageEntry) = get(pe[1], "path", nothing)
-    version(pe::PackageEntry) = get(pe[1], "version", nothing)
+    get_version(pe::PackageEntry) = get(pe[1], "version", nothing)
     tree_hash(pe) = get(pe[1], "git-tree-sha1", nothing)
 
     frommanifest(c::Pkg.Types.Context, uuid) = frommanifest(manifest(c), uuid)
@@ -158,8 +158,8 @@ else
     deps(proj::Pkg.Types.Project) = proj.deps
     deps(pkg::Pair{String,UUID}, c::Pkg.Types.Context) = deps(packageuuid(pkg), c)
     path(pe::PackageEntry) = pe.path
-    version(pe::PackageEntry) = pe.version
-    version(pe::Pair{UUID,PackageEntry}) = last(pe).version
+    get_version(pe::PackageEntry) = pe.version
+    get_version(pe::Pair{UUID,PackageEntry}) = last(pe).version
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID,PackageEntry}, uuid) = manifest[uuid]
     tree_hash(pe::PackageEntry) = VERSION >= v"1.3" ? pe.tree_hash : get(pe.other, "git-tree-sha1", nothing)
@@ -652,7 +652,7 @@ Returns a vector containing the cache storage path for a package structured: [fo
 function get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
     pkg_info = frommanifest(manifest, uuid)
-    ver = version(pkg_info)
+    ver = get_version(pkg_info)
     ver = ver === nothing ? "nothing" : ver
     ver = replace(string(ver), '+'=>'_')
     th = tree_hash(pkg_info)
