@@ -629,7 +629,8 @@ function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay, percentage =
             loadingbay.eval(:(import $(Symbol(pe_name))))
             conn !== nothing && println(conn, "STOPLOAD;$pe_name")
             m = getfield(loadingbay, Symbol(pe_name))
-        catch
+        catch e
+            @warn "Exception loading $uuid: $e"
             return
         end
     end
