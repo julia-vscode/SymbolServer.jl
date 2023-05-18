@@ -637,7 +637,7 @@ end
 
 function write_cache(uuid, pkg::Package, outpath)
     mkpath(dirname(outpath))
-    @info "Now writing to disk $uuid"
+    @info "Now writing to disk $(pkg.name) ($uuid)"
     open(outpath, "w") do io
         CacheStore.write(io, pkg)
     end
