@@ -400,7 +400,12 @@ function all_names(m, pred, symbols = Set(Symbol[]), seen = Set(Module[]))
     symbols
 end
 
-function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Base.IdSet{Symbol} = getallns(), visited = Base.IdSet{Module}();  get_return_type = false)
+function symbols(
+    env::EnvStore, m::Union{Module,Nothing} = nothing,
+    allnames::Base.IdSet{Symbol} = getallns(),
+    visited = Base.IdSet{Module}();
+    get_return_type = false
+)
     if m isa Module
         cache = _lookup(VarRef(m), env, true)
         cache === nothing && return
