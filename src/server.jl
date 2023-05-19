@@ -1,5 +1,8 @@
 
 import Sockets
+
+ENV["SKIP_LOAD_CORE"] = "true"
+
 import SymbolServer
 
 !in("@stdlib", LOAD_PATH) && push!(LOAD_PATH, "@stdlib") # Make sure we can load stdlibs
@@ -23,7 +26,9 @@ end
 
 store_path = length(ARGS) > 0 ? ARGS[1] : abspath(joinpath(@__DIR__, "..", "store"))
 
-SymbolServer.index_packages(conn, store_path)
+module LoadingBay end
+
+SymbolServer.index_packages(conn, store_path, LoadingBay)
 
 println(conn, "DONE")
 close(conn)

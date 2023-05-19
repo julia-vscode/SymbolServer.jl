@@ -408,7 +408,9 @@ function index_packages(conn, store_path::String, loadingbay)
     @info "Symbol server indexing took $((time_ns() - start_time) / 1e9) seconds."
 end
 
-const stdlibs = load_core()
+if !haskey(ENV, "SKIP_LOAD_CORE")
+    const stdlibs = load_core()
+end
 
 function _precompile_()
     ccall(:jl_generating_output, Cint, ()) == 1 || return nothing
