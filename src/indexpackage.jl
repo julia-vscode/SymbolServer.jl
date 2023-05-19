@@ -12,7 +12,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
 
     # Load package
     m = try
-        @time "Loading $name $version" begin
+        @time begin
             LoadingBay.eval(:(import $name))
             getfield(LoadingBay, name)
         end

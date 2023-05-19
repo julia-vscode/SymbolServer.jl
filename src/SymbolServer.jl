@@ -267,13 +267,13 @@ function index_package(
     store_path::String,
     m::Module
 )
-    @time "Indexing package $name $version..." begin
+    @time begin
         # Get the symbols
-        env = @time "getenvtree" getenvtree([name])
-        @time "symbols" symbols(env, m, get_return_type=true)
+        env = @time getenvtree([name])
+        @time symbols(env, m, get_return_type=true)
 
         # Strip out paths
-        @time "modify_dirs" begin
+        @time begin
             modify_dirs(
                 env[name],
                 f -> modify_dir(f, pkg_src_dir(Base.loaded_modules[Base.PkgId(uuid, string(name))]), "PLACEHOLDER")
@@ -289,7 +289,7 @@ function index_package(
 
         mkpath(dir)
 
-        @time "CacheStore.write" begin
+        @time begin
             filename_with_extension = "v$(replace(string(version), '+'=>'_'))_$treehash.jstore"
             open(joinpath(dir, filename_with_extension), "w") do io
                 CacheStore.write(io, Package(string(name), env[name], uuid, nothing))
