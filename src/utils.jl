@@ -531,11 +531,11 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
 end
 
 """
-    validate_disc_store(store_path, manifest)
+    validate_disk_store(store_path, manifest)
 
-This returns a list of non-jll packages in the manifest that don't have caches on disc.
+This returns a list of non-jll packages in the manifest that don't have caches on disk.
 """
-function validate_disc_store(store_path, manifest)
+function validate_disk_store(store_path, manifest)
     filter(manifest) do pkg
         uuid = packageuuid(pkg)
         endswith(packagename(manifest, uuid), "_jll") && return false
@@ -637,7 +637,7 @@ end
 
 function write_cache(uuid, pkg::Package, outpath)
     mkpath(dirname(outpath))
-    @info "Now writing to disc $uuid"
+    @info "Now writing to disk $uuid"
     open(outpath, "w") do io
         CacheStore.write(io, pkg)
     end

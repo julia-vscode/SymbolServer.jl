@@ -41,7 +41,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                 let manifest = read_manifest(manifest_filename)
                     if manifest !== nothing
                         @debug "Downloading cache files for manifest at $(manifest_filename)."
-                        to_download = collect(validate_disc_store(ssi.store_path, manifest))
+                        to_download = collect(validate_disk_store(ssi.store_path, manifest))
                         batches = Iterators.partition(to_download, max(1, floor(Int, length(to_download)÷50)))
                         for (i, batch) in enumerate(batches)
                             percentage = round(Int, 100*(i - 1)/length(batches))
@@ -138,7 +138,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
 
     if success(p)
         # Now we create a new symbol store and load everything into that
-        # from disc
+        # from disk
         new_store = recursive_copy(stdlibs)
         load_project_packages_into_store!(ssi, environment_path, new_store, progress_callback)
         @debug "SymbolStore: store success"
@@ -201,7 +201,7 @@ end
 """
     load_package_from_cache_into_store!(ssp::SymbolServerInstance, uuid, store)
 
-Tries to load the on-disc stored cache for a package (uuid). Attempts to generate (and save to disc) a new cache if the file does not exist or is unopenable.
+Tries to load the on-disk stored cache for a package (uuid). Attempts to generate (and save to disk) a new cache if the file does not exist or is unopenable.
 """
 function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UUID, environment_path, manifest, store, progress_callback = nothing, percentage = missing)
     yield()
@@ -234,7 +234,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UU
             end
         catch err
             Base.display_error(stderr, err, catch_backtrace())
-            @warn "Tried to load $pe_name but failed to load from disc, re-caching."
+            @warn "Tried to load $pe_name but failed to load from disk, re-caching."
             try
                 rm(cache_path)
             catch err2
@@ -244,12 +244,12 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UU
             end
         end
     else
-        @warn "$(pe_name) not stored on disc"
+        @warn "$(pe_name) not stored on disk"
         store[Symbol(pe_name)] = ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict{Symbol,Any}(), "$pe_name failed to load.", true, Symbol[], Symbol[])
     end
 end
 
-function clear_disc_store(ssi::SymbolServerInstance)
+function clear_disk_store(ssi::SymbolServerInstance)
     for f in readdir(ssi.store_path)
         if occursin(f, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
             rm(joinpath(ssi.store_path, f), recursive = true)

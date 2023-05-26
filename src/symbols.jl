@@ -177,7 +177,7 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         # Get inferred method return type
         if get_return_type
             sparams = Core.svec(sparam_syms(m[3])...)
-            rt = try 
+            rt = try
                 @static if isdefined(Core.Compiler, :NativeInterpreter)
                 Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
             else
@@ -472,8 +472,7 @@ function load_core(; get_return_type = false)
     symbols(cache, get_return_type = get_return_type)
     cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
-    # This is wrong. As per the docs the Base.include each module should have it's own
-    # version.
+    # This is wrong. As per the docs the Base.include each module should have its own version.
     push!(cache[:Base].exportednames, :include)
 
     # Add special cases for built-ins

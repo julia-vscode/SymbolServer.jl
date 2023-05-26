@@ -127,7 +127,7 @@ end
         @test haskey(store2, :Markdown)
         @test haskey(store2, :TableTraits)
 
-        SymbolServer.clear_disc_store(ssi)
+        SymbolServer.clear_disk_store(ssi)
 
         @test length(readdir(store_path)) == 0
     end
