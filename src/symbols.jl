@@ -472,8 +472,7 @@ function load_core(; get_return_type = false)
     symbols(cache, get_return_type = get_return_type)
     cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
-    # This is wrong. As per the docs the Base.include each module should have it's own
-    # version.
+    # This is wrong. As per the docs the Base.include each module should have its own version.
     push!(cache[:Base].exportednames, :include)
 
     # Add special cases for built-ins
