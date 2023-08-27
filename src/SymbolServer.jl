@@ -28,18 +28,26 @@ mutable struct SymbolServerInstance
 end
 
 function get_general_pkgs()
-    @static if VERSION >= v"1.7-"
-        regs = Pkg.Types.Context().registries
-        i = findfirst(r -> r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106"), regs)
-        i === nothing && return Dict{UUID, PkgEntry}()
-        return regs[i].pkgs
-    else
-        for r in Pkg.Types.collect_registries()
-            (r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106")) || continue
-            reg = Pkg.Types.read_registry(joinpath(r.path, "Registry.toml"))
-            return reg["packages"]
+    dp_before = copy(Base.DEPOT_PATH)
+    try
+        # because the env var JULIA_DEPOT_PATH is overritten this is probably the best
+        # guess depot location
+        push!(empty!(Base.DEPOT_PATH), joinpath(homedir(), ".julia"))
+        @static if VERSION >= v"1.7-"
+            regs = Pkg.Types.Context().registries
+            i = findfirst(r -> r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106"), regs)
+            i === nothing && return Dict{UUID, PkgEntry}()
+            return regs[i].pkgs
+        else
+            for r in Pkg.Types.collect_registries()
+                (r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106")) || continue
+                reg = Pkg.Types.read_registry(joinpath(r.path, "Registry.toml"))
+                return reg["packages"]
+            end
+            return Dict{UUID, PkgEntry}()
         end
-        return Dict{UUID, PkgEntry}()
+    finally
+        append!(empty!(Base.DEPOT_PATH), dp_before)
     end
 end
 
