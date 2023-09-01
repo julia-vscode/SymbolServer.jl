@@ -89,44 +89,39 @@ for (pk_name, uuid) in toplevel_pkgs
     end
 end
 
-visited = Base.IdSet{Module}([Base, Core])
-
 # Load all packages together
+# This is important, or methods added to functions in other packages that are loaded earlier would not be in the cache
 for (i, uuid) in enumerate(packages_to_load)
     load_package(ctx, uuid, conn, LoadingBay, round(Int, 100*(i - 1)/length(packages_to_load)))
-
-    # XXX: The following *may* duplicate some work, but we want to make sure that interrupts of
-    #      the SymbolServer process don't invalidate *all* work done (which would happen when only
-    #      writing the cache files out after all packages are loaded)
-
-    # Create image of whole package env. This creates the module structure only.
-    env_symbols = getenvtree()
-
-    # Populate the above with symbols, skipping modules that don't need caching.
-    # symbols (env_symbols)
-     # don't need to cache these each time...
-    for (pid, m) in Base.loaded_modules
-        if pid.uuid !== nothing &&
-                is_stdlib(pid.uuid) &&
-                isinmanifest(ctx, pid.uuid) &&
-                isfile(joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), pid.uuid)...))
-            push!(visited, m)
-            delete!(env_symbols, Symbol(pid.name))
-        end
-    end
-
-    symbols(env_symbols, nothing, getallns(), visited)
-
-    # Wrap the `ModuleStore`s as `Package`s.
-    for (pkg_name, cache) in env_symbols
-        !isinmanifest(ctx, String(pkg_name)) && continue
-        uuid = packageuuid(ctx, String(pkg_name))
-        pe = frommanifest(ctx, uuid)
-        server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(pe))
-    end
-
-    write_depot(server, server.context, written_caches)
 end
+
+# Create image of whole package env. This creates the module structure only.
+env_symbols = getenvtree()
+
+# Populate the above with symbols, skipping modules that don't need caching.
+# symbols (env_symbols)
+visited = Base.IdSet{Module}([Base, Core])
+
+for (pid, m) in Base.loaded_modules
+    if pid.uuid !== nothing && is_stdlib(pid.uuid) &&
+        isinmanifest(ctx, pid.uuid) &&
+        isfile(joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), pid.uuid)...))
+        push!(visited, m)
+        delete!(env_symbols, Symbol(pid.name))
+    end
+end
+
+symbols(env_symbols, nothing, getallns(), visited)
+
+# Wrap the `ModuleStore`s as `Package`s.
+for (pkg_name, cache) in env_symbols
+    !isinmanifest(ctx, String(pkg_name)) && continue
+    uuid = packageuuid(ctx, String(pkg_name))
+    pe = frommanifest(ctx, uuid)
+    server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(pe))
+end
+
+write_depot(server, server.context, written_caches)
 
 @info "Symbol server indexing took $((time_ns() - start_time) / 1e9) seconds."
 
