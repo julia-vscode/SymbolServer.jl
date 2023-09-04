@@ -146,6 +146,34 @@ end
         @test !isempty(SymbolServer.stdlibs[:Base][:VecOrMat].doc)     # Union
         @test occursin("Cint", SymbolServer.stdlibs[:Base][:Cint].doc) # Alias
     end
+
+    if VERSION >= v"1.1-"
+        @testset "Excluding private packages from cache download requests" begin
+            pkgs = Dict{Base.UUID, Pkg.Types.PackageEntry}()
+            if VERSION < v"1.3-"
+                pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")] = Pkg.Types.PackageEntry(name="Example", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
+                pkgs[UUID("3e13f8c9-a9aa-412e-8b2a-fda000b375e2")] = Pkg.Types.PackageEntry(name="NotInGeneral", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
+                pkgs[UUID("eb4ab7d2-1172-48bd-a954-ae6825f2e6e3")] = Pkg.Types.PackageEntry(other=Dict("git-tree-sha1" => Base.SHA1("0"^40))) # no name
+                pkgs[UUID("1fec9e91-426f-45f4-a317-da8b2730f864")] = Pkg.Types.PackageEntry(name="NoTreeHash") # no tree_hash, like stdlibs
+            else
+                pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")] = Pkg.Types.PackageEntry(name="Example", tree_hash=Base.SHA1("0"^40))
+                pkgs[UUID("3e13f8c9-a9aa-412e-8b2a-fda000b375e2")] = Pkg.Types.PackageEntry(name="NotInGeneral", tree_hash=Base.SHA1("1"^40))
+                pkgs[UUID("eb4ab7d2-1172-48bd-a954-ae6825f2e6e3")] = Pkg.Types.PackageEntry(tree_hash=Base.SHA1("2"^40)) # no name
+                pkgs[UUID("1fec9e91-426f-45f4-a317-da8b2730f864")] = Pkg.Types.PackageEntry(name="NoTreeHash") # no tree_hash, like stdlibs
+            end
+
+            SymbolServer.remove_non_general_pkgs!(pkgs)
+
+            @test length(pkgs) == 1
+            @test haskey(pkgs, UUID("7876af07-990d-54b4-ab0e-23690620f79a"))
+            @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].name == "Example"
+            if VERSION < v"1.3"
+                @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].other["git-tree-sha1"] == Base.SHA1("0"^40)
+            else
+                @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].tree_hash == Base.SHA1("0"^40)
+            end
+        end
+    end
 end
 
 using SymbolServer: FakeTypeName
