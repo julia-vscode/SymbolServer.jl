@@ -163,7 +163,12 @@ else
     frommanifest(c::Pkg.Types.Context, uuid) = manifest(c)[uuid]
     frommanifest(manifest::Dict{UUID,PackageEntry}, uuid) = manifest[uuid]
     tree_hash(pkg::Pair{UUID,PackageEntry}) = tree_hash(last(pkg))
-    tree_hash(pe::PackageEntry) = VERSION >= v"1.3" ? pe.tree_hash : (pe.other === nothing ? nothing : get(pe.other, "git-tree-sha1", nothing))
+
+    @static if VERSION >= v"1.3"
+        tree_hash(pe::PackageEntry) = pe.tree_hash
+    else
+        tree_hash(pe::PackageEntry) = (pe.other === nothing ? nothing : get(pe.other, "git-tree-sha1", nothing))
+    end
 
     is_package_deved(manifest, uuid) = manifest[uuid].path !== nothing
 end
@@ -444,11 +449,7 @@ function modify_dirs(m::ModuleStore, f)
     end
 end
 
-
-
 pkg_src_dir(m::Module) = dirname(pathof(m))
-
-
 
 # replace s1 with s2 at the start of a string
 function modify_dir(f, s1, s2)
@@ -467,13 +468,14 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
 
     dest_filepath = joinpath(cache_dir, paths...)
     dest_filepath_unavailable = string(first(splitext(dest_filepath)), ".unavailable")
+
     download_dir = joinpath(download_dir, first(splitext(last(paths))))
     download_filepath = joinpath(download_dir, last(paths))
     download_filepath_unavailable = string(first(splitext(download_filepath)), ".unavailable")
 
     @debug "Downloading cache file for $name."
     if isfile(dest_filepath_unavailable)
-        @info "Cloud was unable to cache $name in the past, we won't try to retrieve it again."
+        @debug "Cloud was unable to cache $name in the past, we won't try to retrieve it again."
         return false
     end
     file = try
@@ -487,15 +489,11 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
             mv(download_filepath, dest_filepath)
             dest_filepath
         else
-            nothing
+            @debug "Couldn't retrieve cache file for $name."
+            return false
         end
     catch err
-        @info "Couldn't retrieve cache file for $name." exception = err
-        return false
-    end
-
-    if file === nothing
-        @info "Couldn't retrieve cache file for $name."
+        @debug "Couldn't retrieve cache file for $name." exception = (err, catch_backtrace())
         return false
     end
 
@@ -504,7 +502,7 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
             CacheStore.read(io)
         end
     catch
-        @info "Couldn't read cache file for $name, deleting."
+        @warn "Couldn't read cache file for $name, deleting."
         rm(file)
         return false
     end
@@ -515,11 +513,15 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
     else
         pkg_root = get_pkg_path(Base.PkgId(uuid, name), environment_path, depot_dir)
         if pkg_root === nothing
-            @info "Successfully downloaded and saved $(name), but with placeholder paths"
+            @debug "Successfully downloaded and saved $(name), but with placeholder paths"
             return false
         end
         pkg_src = joinpath(pkg_root, "src")
     end
+
+    # TODO: it would be better if the PLACEHOLDER replacement happens at runtime
+    #       instead of "unpack-time", because we can use the current depot path
+    #       in case the user switched to another one after downloading
 
     @debug "Replacing PLACEHOLDER with:" pkg_src
     modify_dirs(cache.val, f -> modify_dir(f, r"^PLACEHOLDER", pkg_src))
@@ -527,7 +529,7 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
         CacheStore.write(io, cache)
     end
 
-    @info "Successfully downloaded, scrubbed and saved $(name)"
+    @debug "Successfully downloaded, scrubbed and saved $(name)"
     return true
 end
 
