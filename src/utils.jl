@@ -656,7 +656,12 @@ function get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
     pkg_info = frommanifest(manifest, uuid)
     ver = version(pkg_info)
-    ver = ver === nothing ? "nothing" : ver
+    if ver === nothing
+        ver = "nothing"
+        if isdefined(Pkg.Types, :is_stdlib) && Pkg.Types.is_stdlib(uuid)
+            ver = VERSION
+        end
+    end
     ver = replace(string(ver), '+'=>'_')
     th = tree_hash(pkg_info)
     th = th === nothing ? "nothing" : th
