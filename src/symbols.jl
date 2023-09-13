@@ -133,15 +133,24 @@ function maybe_fixup_stdlib_path(path)
     return path
 end
 
-const _global_method_cache = IdDict{Any,Vector{Any}}()
-function methodinfo(@nospecialize(f); types = Tuple, world = typemax(UInt))
-    key = (f, types, world)
-    cached = get(_global_method_cache, key, nothing)
-    if cached === nothing
-        cached = Base._methods(f, types, -1, world)
-        _global_method_cache[key] = cached
+_default_world_age() =
+    if isdefined(Base, :get_world_counter)
+        Base.get_world_counter()
+    else
+        typemax(UInt)
     end
-    return cached
+
+const _global_method_cache = IdDict{Any,Vector{Any}}()
+function methodinfo(@nospecialize(f); types = Tuple, world = _default_world_age())
+    key = (f, types, world)
+    if haskey(_global_method_cache, key)
+        return _global_method_cache[key]
+    else
+        ms = Base._methods(f, types, -1, world)
+        ms isa Vector || (ms = [])
+        _global_method_cache[key] = ms
+        return ms
+    end
 end
 
 function methodlist(@nospecialize(f))
@@ -164,11 +173,12 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         return MethodStore[]
     end
     types = Tuple
-    world = typemax(UInt)
+    world = _default_world_age()
     ms = Tuple{Module,MethodStore}[]
     methods0 = try
         methodinfo(f; types = types, world = world)
     catch err
+        @debug "Error in method lookup for $f" ex=(err, catch_backtrace())
         return ms
     end
     ind_of_method_w_kws = Int[] # stores the index of methods with kws.
@@ -177,7 +187,7 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         # Get inferred method return type
         if get_return_type
             sparams = Core.svec(sparam_syms(m[3])...)
-            rt = try 
+            rt = try
                 @static if isdefined(Core.Compiler, :NativeInterpreter)
                 Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
             else
@@ -207,30 +217,30 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         push!(ms, (m[3].module, MS))
         i += 1
     end
+
     # Go back and add kws to methods defined in the same place as others with kws.
     for i in ind_of_method_w_kws
-        for j = 1:length(ms) # only need to go up to `i`?
-            if ms[j][2].file == ms[i][2].file && ms[j][2].line == ms[i][2].line && isempty(ms[j][2].kws)
+        for mj in ms
+            if mj[2].file == ms[i][2].file && mj[2].line == ms[i][2].line && isempty(mj[2].kws)
                 for kw in ms[i][2].kws
-                    push!(ms[j][2].kws, kw)
+                    push!(mj[2].kws, kw)
                 end
             end
         end
     end
 
     func_vr = VarRef(VarRef(parentmodule(f)), name)
-    for i = 1:length(ms)
-        mvr = VarRef(ms[i][1])
+    for m in ms
+        mvr = VarRef(m[1])
         modstore = _lookup(mvr, env)
-        if modstore !== nothing
-            if !haskey(modstore, name)
-                modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[ms[i][2]], "", func_vr, false)
-            elseif !(modstore[name] isa DataTypeStore || modstore[name] isa FunctionStore)
-                modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[ms[i][2]], "", func_vr, false)
-            else
-                push!(modstore[name].methods, ms[i][2])
-            end
+        modstore === nothing && continue
+
+        if !haskey(modstore, name)
+            modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[m[2]], "", func_vr, false)
+        elseif !(modstore[name] isa DataTypeStore || modstore[name] isa FunctionStore)
+            modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[m[2]], "", func_vr, false)
         else
+            push!(modstore[name].methods, m[2])
         end
     end
     return ms

@@ -27,6 +27,7 @@ mutable struct SymbolServerInstance
     end
 end
 
+const GENERAL_REGISTRY_UUID = UUID("23338594-aafe-5451-b93e-139f81909106")
 function get_general_pkgs()
     dp_before = copy(Base.DEPOT_PATH)
     try
@@ -35,12 +36,12 @@ function get_general_pkgs()
         push!(empty!(Base.DEPOT_PATH), joinpath(homedir(), ".julia"))
         @static if VERSION >= v"1.7-"
             regs = Pkg.Types.Context().registries
-            i = findfirst(r -> r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106"), regs)
+            i = findfirst(r -> r.name == "General" && r.uuid == GENERAL_REGISTRY_UUID, regs)
             i === nothing && return Dict{UUID, PkgEntry}()
             return regs[i].pkgs
         else
             for r in Pkg.Types.collect_registries()
-                (r.name == "General" && r.uuid == UUID("23338594-aafe-5451-b93e-139f81909106")) || continue
+                (r.name == "General" && r.uuid == GENERAL_REGISTRY_UUID) || continue
                 reg = Pkg.Types.read_registry(joinpath(r.path, "Registry.toml"))
                 return reg["packages"]
             end
@@ -86,52 +87,64 @@ function remove_non_general_pkgs!(pkgs)
     return pkgs
 end
 
-function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = false)
-    !ispath(environment_path) && return :success, recursive_copy(stdlibs)
+function download_cache_files(ssi, environment_path, progress_callback)
+    download_dir_parent = joinpath(ssi.store_path, "_downloads")
+    mkpath(download_dir_parent)
 
-    # see if we can download any package cache's before
-    if download
-        download_dir_parent = joinpath(ssi.store_path, "_downloads")
-        mkpath(download_dir_parent)
+    mktempdir(download_dir_parent) do download_dir
+        candidates = [
+            joinpath(environment_path, "JuliaManifest.toml"),
+            joinpath(environment_path, "Manifest.toml")
+        ]
 
-        mktempdir(download_dir_parent) do download_dir
-            manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
-            if isfile(manifest_filename)
-                let manifest = read_manifest(manifest_filename)
-                    if manifest !== nothing
-                        @debug "Downloading cache files for manifest at $(manifest_filename)."
-                        to_download = collect(validate_disc_store(ssi.store_path, manifest))
-                        try
-                            remove_non_general_pkgs!(to_download)
-                        catch err
-                            # if any errors, err on the side of caution and mark all as private, and continue
-                            @error """
-                            Symbol cache downloading: Failed to identify which packages to omit based on the General registry.
-                            All packages will be processsed locally""" err
-                            empty!(to_download)
-                        end
-                        if !isempty(to_download)
-                            n_done = 0
-                            n_total = length(to_download)
-                            for batch in Iterators.partition(to_download, 100) # 100 connections at a time
-                                @sync for pkg in batch
-                                    @async begin
-                                        yield()
-                                        uuid = packageuuid(pkg)
-                                        get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
-                                        yield()
-                                        n_done += 1
-                                        percentage = round(Int, 100*(n_done/n_total))
-                                        progress_callback !== nothing && progress_callback("Downloading caches...", percentage)
-                                    end
-                                end
-                            end
-                            progress_callback !== nothing && progress_callback("All cache files downloaded.", 100)
-                        end
+        for manifest_filename in candidates
+            !isfile(manifest_filename) && continue
+
+            manifest = read_manifest(manifest_filename)
+            manifest === nothing && continue
+
+            @debug "Downloading cache files for manifest at $(manifest_filename)."
+            to_download = collect(validate_disc_store(ssi.store_path, manifest))
+            try
+                remove_non_general_pkgs!(to_download)
+            catch err
+                # if any errors, err on the side of caution and mark all as private, and continue
+                @error """
+                Symbol cache downloading: Failed to identify which packages to omit based on the General registry.
+                All packages will be processsed locally""" err
+                empty!(to_download)
+            end
+            isempty(to_download) && continue
+
+            n_done = 0
+            n_total = length(to_download)
+            progress_callback("Downloading cache files...", 0)
+            for batch in Iterators.partition(to_download, 100) # 100 connections at a time
+                @sync for pkg in batch
+                    @async begin
+                        yield()
+                        uuid = packageuuid(pkg)
+                        get_file_from_cloud(manifest, uuid, environment_path, ssi.depot_path, ssi.store_path, download_dir, ssi.symbolcache_upstream)
+                        yield()
+                        n_done += 1
+                        percentage = round(Int, 100*(n_done/n_total))
+                        progress_callback("Downloading cache files...", percentage)
                     end
                 end
             end
+            progress_callback("All cache files downloaded.", 100)
         end
+    end
+end
+
+function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, progress_callback=nothing, error_handler=nothing; download = false)
+    !ispath(environment_path) && return :success, recursive_copy(stdlibs)
+    _progress_callback = (msg, p) -> progress_callback === nothing ?
+        println(lpad(p, 4), "% - ", msg) : progress_callback(msg, p)
+
+    # see if we can download any package caches before local indexing
+    if download
+        download_cache_files(ssi, environment_path, _progress_callback)
     end
 
     jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
@@ -163,6 +176,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     pipename = pipe_name()
 
     server_is_ready = Channel(1)
+
     @async try
         server = Sockets.listen(pipename)
 
@@ -181,13 +195,13 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
                 current_package_uuid = parts[3]
                 current_package_version = parts[4]
                 percentage = parts[5] == "missing" ? missing : parse(Int, parts[5])
-                progress_callback !== nothing && progress_callback("Indexing $current_package_name...", percentage)
+                _progress_callback("Indexing $current_package_name...", percentage)
             elseif parts[1] == "STOPLOAD"
                 currently_loading_a_package = false
             elseif parts[1] == "PROCESSPKG"
                 current_package_name = parts[2]
                 percentage = parts[5] == "missing" ? missing : parse(Int, parts[5])
-                progress_callback !== nothing && progress_callback("Processing $current_package_name...", percentage)
+                _progress_callback("Processing $current_package_name...", percentage)
             elseif parts[1] == "DONE"
                 break
             else
@@ -212,7 +226,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         # Now we create a new symbol store and load everything into that
         # from disc
         new_store = recursive_copy(stdlibs)
-        load_project_packages_into_store!(ssi, environment_path, new_store, progress_callback)
+        load_project_packages_into_store!(ssi, environment_path, new_store, _progress_callback)
         @debug "SymbolStore: store success"
         return :success, new_store
     elseif p in ssi.canceled_processes
@@ -286,7 +300,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UU
     # further existence checks needed?
     cache_path = joinpath(ssi.store_path, get_cache_path(manifest, uuid)...)
     if isfile(cache_path)
-        progress_callback !== nothing && progress_callback("Loading $pe_name from cache...", percentage)
+        progress_callback("Loading $pe_name from cache...", percentage)
         try
             package_data = open(cache_path) do io
                 CacheStore.read(io)
@@ -317,7 +331,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UU
         end
     else
         @warn "$(pe_name) not stored on disc"
-        store[Symbol(pe_name)] = ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict{Symbol,Any}(), "$pe_name failed to load.", true, Symbol[], Symbol[])
+        store[Symbol(pe_name)] = ModuleStore(VarRef(nothing, Symbol(pe_name)), Dict{Symbol,Any}(), "$pe_name could not be indexed.", true, Symbol[], Symbol[])
     end
 end
 
