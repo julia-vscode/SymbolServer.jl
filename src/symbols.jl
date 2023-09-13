@@ -50,6 +50,12 @@ struct DataTypeStore <: SymStore
     methods::Vector{MethodStore}
     doc::String
     exported::Bool
+    function DataTypeStore(names, super, parameters, types, fieldnames, methods, doc, exported)
+        if length(types) < length(fieldnames)
+            error("Only $(length(types)) types were loaded for $(length(fieldnames)) fieldnames. SymbolServer may recalculate the cache.")
+        end
+        new(names, super, parameters, types, fieldnames, methods, doc, exported)
+    end
 end
 
 function DataTypeStore(@nospecialize(t), symbol, parent_mod, exported)
@@ -189,10 +195,10 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
             sparams = Core.svec(sparam_syms(m[3])...)
             rt = try
                 @static if isdefined(Core.Compiler, :NativeInterpreter)
-                Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
-            else
-                Core.Compiler.typeinf_type(m[3], m[3].sig, sparams, Core.Compiler.Params(world))
-            end
+                    Core.Compiler.typeinf_type(Core.Compiler.NativeInterpreter(), m[3], m[3].sig, sparams)
+                else
+                    Core.Compiler.typeinf_type(m[3], m[3].sig, sparams, Core.Compiler.Params(world))
+                end
             catch e
                 Any
             end
