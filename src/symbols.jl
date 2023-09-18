@@ -50,11 +50,11 @@ struct DataTypeStore <: SymStore
     methods::Vector{MethodStore}
     doc::String
     exported::Bool
-    function DataTypeStore(names, super, parameters, types, fieldnames, methods, doc, exported)
-        if length(types) < length(fieldnames)
-            error("Only $(length(types)) types were loaded for $(length(fieldnames)) fieldnames. SymbolServer may recalculate the cache.")
+    function DataTypeStore(names, super, parameters, fieldtypes, fieldnames, methods, doc, exported)
+        if length(fieldtypes) < length(fieldnames)
+            append!(fieldtypes, [Any for _ in 1:(length(fieldnames)-length(fieldtypes))])
         end
-        new(names, super, parameters, types, fieldnames, methods, doc, exported)
+        new(names, super, parameters, fieldtypes, fieldnames, methods, doc, exported)
     end
 end
 
