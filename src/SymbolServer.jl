@@ -119,6 +119,7 @@ function download_cache_files(ssi, environment_path, progress_callback)
             n_done = 0
             n_total = length(to_download)
             progress_callback("Downloading cache files...", 0)
+            t0 = time()
             for batch in Iterators.partition(to_download, 100) # 100 connections at a time
                 @sync for pkg in batch
                     @async begin
@@ -128,11 +129,14 @@ function download_cache_files(ssi, environment_path, progress_callback)
                         yield()
                         n_done += 1
                         percentage = round(Int, 100*(n_done/n_total))
-                        progress_callback("Downloading cache files...", percentage)
+                        if percentage < 100
+                            progress_callback("Downloading cache files...", percentage)
+                        end
                     end
                 end
             end
-            progress_callback("All cache files downloaded.", 100)
+            took = round(time() - t0, sigdigits = 2)
+            progress_callback("All cache files downloaded (took $(took)s).", 100)
         end
     end
 end
@@ -279,9 +283,12 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
     manifest === nothing && return
     uuids = values(deps(project))
     num_uuids = length(values(deps(project)))
+    t0 = time()
     for (i, uuid) in enumerate(uuids)
         load_package_from_cache_into_store!(ssi, uuid isa UUID ? uuid : UUID(uuid), environment_path, manifest, store, progress_callback, round(Int, 100 * (i - 1) / num_uuids))
     end
+    took = round(time() - t0, sigdigits = 2)
+    progress_callback("Loaded all packages into cache in $(took)s", 100)
 end
 
 """
@@ -300,6 +307,7 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UU
     # further existence checks needed?
     cache_path = joinpath(ssi.store_path, get_cache_path(manifest, uuid)...)
     if isfile(cache_path)
+        t0 = time()
         progress_callback("Loading $pe_name from cache...", percentage)
         try
             package_data = open(cache_path) do io
@@ -315,6 +323,13 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UU
             end
 
             store[Symbol(pe_name)] = package_data.val
+            took = round(time() - t0, sigdigits = 2)
+            msg = "Done loading $pe_name from cache..."
+            if took > 0.01
+                msg *= " (took $(took)s)"
+            end
+            progress_callback(msg, percentage)
+            t0 = time()
             for dep in deps(pe)
                 load_package_from_cache_into_store!(ssi, packageuuid(dep), environment_path, manifest, store, progress_callback, percentage)
             end
