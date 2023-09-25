@@ -35,3 +35,7 @@ getstore(ssi::SymbolServerInstance, environment_path::AbstractString)
 Loads the symbols for the environment in `environment_path`. Returns a tuple, where the first element is a return status and the second element a payload. The status can be `:success` (in which case the second element is the new store), `:canceled` if another call to `getstore` was initiated before a previous one finished (with `nothing` as the payload), or `:failure` with the payload being the content of the error stream of the client process.
 
 This function is long running and should typically be called in an `@async` block.
+
+## Development of the VSCode extension
+
+See https://github.com/julia-vscode/julia-vscode/wiki for information on how to test this package with the VSCode extension
