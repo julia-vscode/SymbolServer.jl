@@ -39,7 +39,7 @@ function FakeTypeName(@nospecialize(x); justname=false)
         FakeTypeVar(x)
     elseif x isa Core.TypeofBottom
         FakeTypeofBottom()
-    elseif x isa Module && justname
+    elseif x isa Module
         VarRef(x)
     else
         error((x, typeof(x)))
