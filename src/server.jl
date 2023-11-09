@@ -125,7 +125,9 @@ write_depot(server, server.context, written_caches)
 
 @info "Symbol server indexing took $((time_ns() - start_time) / 1e9) seconds."
 
-println(conn, "DONE")
-close(conn)
+if conn !== nothing
+    println(conn, "DONE")
+    close(conn)
+end
 
 end

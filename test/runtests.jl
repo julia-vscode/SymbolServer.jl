@@ -46,6 +46,13 @@ function check_varrefs(env, m=nothing)
         for x in values(m.vals)
             if x isa SymbolServer.VarRef && x.parent !== nothing
                 x0 = SymbolServer._lookup(x.parent, env, true)
+
+                if x0 === nothing && x.parent !== nothing && x.parent.name === :Pidfile
+                    # these are dynamically put into Base when loading FileWatching, so we
+                    # don't need to error out when not finding them from the root env
+                    continue
+                end
+
                 @test x0 !== nothing
                 @test x0 !== m
             elseif x isa SymbolServer.ModuleStore
@@ -90,14 +97,15 @@ end
     end
 
     mktempdir() do path
-        cp(joinpath(@__DIR__, "testenv", "Project.toml"), joinpath(path, "Project.toml"))
-        cp(joinpath(@__DIR__, "testenv", "Manifest.toml"), joinpath(path, "Manifest.toml"))
+        cp(joinpath(@__DIR__, "testenv"), path; force=true)
 
         store_path = joinpath(path, "store")
         mkpath(store_path)
 
         jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
-        run(`$jl_cmd --project=$path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+        withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+            run(`$jl_cmd --project=$path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+        end
 
         ssi = SymbolServerInstance("", store_path)
 
@@ -108,9 +116,10 @@ end
         end
 
         # We sleep for a second here to make sure the async task we started
-        # previously gets run first
+        # previously gets started first
         sleep(1)
 
+        # this will cancel the previous getstore request
         ret_status2, store2 = getstore(ssi, path, download = false)
 
         if ret_status2 == :failure
