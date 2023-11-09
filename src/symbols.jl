@@ -488,13 +488,25 @@ function load_core(; get_return_type = false)
     symbols(cache, get_return_type = get_return_type)
     cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
-    # This is wrong. As per the docs the Base.include each module should have it's own
-    # version.
+    # This is wrong. Every module contains it's own include function.
     push!(cache[:Base].exportednames, :include)
-
-    # Add special cases for built-ins
     let f = cache[:Base][:include]
-        cache[:Base][:include] = FunctionStore(f.name, cache[:Base][:MainInclude][:include].methods, f.doc, f.extends, true)
+        if haskey(cache[:Base][:MainInclude], :include)
+            cache[:Base][:include] = FunctionStore(f.name, cache[:Base][:MainInclude][:include].methods, f.doc, f.extends, true)
+        else
+            m1 = first(f.methods)
+            push!(f.methods, MethodStore(
+                m1.name,
+                m1.mod,
+                m1.file,
+                m1.line,
+                Pair{Any,Any}[
+                    :x => SymbolServer.FakeTypeName(SymbolServer.VarRef(SymbolServer.VarRef(nothing, :Core), :AbstractString), Any[])
+                ],
+                [],
+                m1.rt
+            ))
+        end
     end
 
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
