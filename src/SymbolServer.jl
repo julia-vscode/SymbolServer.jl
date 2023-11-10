@@ -221,7 +221,15 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         end
     end
     take!(server_is_ready)
-    p = open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr_for_client_process), read=true, write=true)
+
+    # 1.11 introduces the --compiled-modules=existing option, which should be much faster than no
+    #   as of 2023-11-09, loading Pkg with --compiled-modules=no also changes something with the
+    #   active project, which breaks the server.jl script
+    p = if VERSION > v"1.11-"
+        open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=existing --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr), read=true, write=true)
+    else
+        open(pipeline(Cmd(`$jl_cmd --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr), read=true, write=true)
+    end
     ssi.process = p
 
     yield()
