@@ -1,6 +1,6 @@
 using SymbolServer, Pkg
 using SymbolServer: packagename, packageuuid, deps, manifest, project, version, Package, frommanifest, VarRef, _lookup
-using Base:UUID
+using Base: UUID
 using Test
 
 allns = SymbolServer.getallns()
@@ -141,6 +141,43 @@ end
         @test length(readdir(store_path)) == 0
     end
 
+    @testset "issues/285"
+        mktempdir() do path
+            cp(joinpath(@__DIR__, "testenv2"), path; force=true)
+
+            project_path = joinpath(path, "proj")
+
+            store_path = joinpath(path, "store")
+            mkpath(store_path)
+
+            jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+            withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+                run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+            end
+
+            ssi = SymbolServerInstance("", store_path)
+            ret_status, store = getstore(ssi, project_path; download=false)
+            @test ret_status == :success
+            @test length(store) == 4
+            @test haskey(store, :Core)
+            @test haskey(store, :Base)
+            @test haskey(store, :Main)
+            @test haskey(store, :A)
+
+            # Inspect the cached version, and check that the package SHA has been computed
+            # correctly.
+            cache_path = joinpath(store_path, "A", "A_94f385dd-073b-49fe-b7ed-f824d09b3331", "v0.1.0_nothing.jstore")
+            @test isfile(cache_path)
+
+            cached_version = open(SymbolServer.CacheStore.read, cache_path)
+            @test !isnothing(cached_version.sha)
+            @test cached_version.sha == SymbolServer.sha2_256_dir(joinpath(path, "A", "src"))
+
+            SymbolServer.clear_disc_store(ssi)
+            @test length(readdir(store_path)) == 0
+        end
+    end
+
     @test SymbolServer.stdlibs[:Base][:Sort][:sort] isa SymbolServer.FunctionStore
 
     @testset "symbol documentation" begin
@@ -158,7 +195,7 @@ end
 
     if VERSION >= v"1.1-"
         @testset "Excluding private packages from cache download requests" begin
-            pkgs = Dict{Base.UUID, Pkg.Types.PackageEntry}()
+            pkgs = Dict{Base.UUID,Pkg.Types.PackageEntry}()
             if VERSION < v"1.3-"
                 pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")] = Pkg.Types.PackageEntry(name="Example", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
                 pkgs[UUID("3e13f8c9-a9aa-412e-8b2a-fda000b375e2")] = Pkg.Types.PackageEntry(name="NotInGeneral", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
@@ -188,7 +225,7 @@ end
 using SymbolServer: FakeTypeName
 
 @testset "TypeofVararg" begin
-    Ts = Any[Vararg, Vararg{Bool,3}, NTuple{N,Any} where N]
+    Ts = Any[Vararg, Vararg{Bool,3}, NTuple{N,Any} where {N}]
     isdefined(Core, :TypeofVararg) && append!(Ts, Any[Vararg{Int}, Vararg{Rational}])
 
     for ((i, T1), (j, T2)) in Iterators.product(enumerate.((Ts, Ts))...)
@@ -212,23 +249,26 @@ import UUIDs
     else
         tmp_access = try
             n = "/tmp/" * string(UUIDs.uuid4())
-            touch(n); rm(n)
+            touch(n)
+            rm(n)
             true
         catch
             false
         end
         too_long = joinpath(tempdir(), string(UUIDs.uuid4())^3)
         mkdir(too_long)
-        for TEMPDIR in (tempdir(), too_long); withenv("TEMPDIR" => TEMPDIR) do
-            p = SymbolServer.pipe_name()
-            #         TEMPDIR    + / + prefix                  + UUID[1:13]
-            if length(tempdir()) + 1 + length("vscjlsymserv-") + 13 < 92 || !tmp_access
-                @test startswith(p, tempdir())
-                @test occursin(r"^vscjlsymserv-\w{8}-\w{4}$", basename(p))
-            else
-                @test occursin(r"^/tmp/vscjlsymserv-\w{8}(?:-\w{4}){3}-\w{12}$", p)
+        for TEMPDIR in (tempdir(), too_long)
+            withenv("TEMPDIR" => TEMPDIR) do
+                p = SymbolServer.pipe_name()
+                #         TEMPDIR    + / + prefix                  + UUID[1:13]
+                if length(tempdir()) + 1 + length("vscjlsymserv-") + 13 < 92 || !tmp_access
+                    @test startswith(p, tempdir())
+                    @test occursin(r"^vscjlsymserv-\w{8}-\w{4}$", basename(p))
+                else
+                    @test occursin(r"^/tmp/vscjlsymserv-\w{8}(?:-\w{4}){3}-\w{12}$", p)
+                end
             end
-        end end
+        end
         rm(too_long; recursive=true)
     end
 end
