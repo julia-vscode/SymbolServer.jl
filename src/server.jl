@@ -55,7 +55,12 @@ server = Server(store_path, ctx, Dict{UUID,Package}())
 written_caches = String[] # List of caches that have already been written
 toplevel_pkgs = deps(project(ctx)) # First get a list of all package UUIds that we want to cache
 packages_to_load = []
-# Next make sure the cache is up-to-date for all of these
+
+# Obtain the directory containing the active Manifest.toml. Any 'develop'ed dependencies
+# will contain a path that is relative to this directory.
+manifest_dir = dirname(ctx.env.manifest_file)
+
+# Next make sure the cache is up-to-date for all of these.
 for (pk_name, uuid) in toplevel_pkgs
     uuid isa UUID || (uuid = UUID(uuid))
     if !isinmanifest(ctx, uuid)
@@ -71,7 +76,7 @@ for (pk_name, uuid) in toplevel_pkgs
                 cached_version = open(cache_path) do io
                     CacheStore.read(io)
                 end
-                if sha_pkg(frommanifest(manifest(ctx), uuid)) != cached_version.sha
+                if sha_pkg(manifest_dir, frommanifest(manifest(ctx), uuid)) != cached_version.sha
                     @info "Outdated sha, will recache package $pk_name ($uuid)"
                     push!(packages_to_load, uuid)
                 else
@@ -118,7 +123,7 @@ for (pkg_name, cache) in env_symbols
     !isinmanifest(ctx, String(pkg_name)) && continue
     uuid = packageuuid(ctx, String(pkg_name))
     pe = frommanifest(ctx, uuid)
-    server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(pe))
+    server.depot[uuid] = Package(String(pkg_name), cache, uuid, sha_pkg(manifest_dir, pe))
 end
 
 write_depot(server, server.context, written_caches)
