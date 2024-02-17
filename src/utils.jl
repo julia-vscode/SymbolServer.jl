@@ -189,8 +189,11 @@ function sha2_256_dir(path, sha=zeros(UInt8, 32))
     return sha
 end
 
-function sha_pkg(pe::PackageEntry)
-    path(pe) isa String && isdir(path(pe)) && isdir(joinpath(path(pe), "src")) ? sha2_256_dir(joinpath(path(pe), "src")) : nothing
+function sha_pkg(manifest_dir::AbstractString, pe::PackageEntry)
+    relpath = path(pe)
+    isa(relpath, String) || return nothing
+    src_path = normpath(joinpath(manifest_dir, relpath, "src"))
+    return isdir(src_path) ? sha2_256_dir(src_path) : nothing
 end
 
 function _doc(binding::Base.Docs.Binding)
