@@ -90,7 +90,7 @@ function Base.print(io::IO, tn::FakeTypeName)
 end
 Base.print(io::IO, x::FakeUnionAll) = print(io, x.body, " where ", x.var)
 function Base.print(io::IO, x::FakeUnion; inunion=false)
-    !inunion && print(io,  "Union{")
+    !inunion && print(io, "Union{")
     print(io, x.a, ",")
     if x.b isa FakeUnion
         print(io, x.b, inunion=true)
