@@ -9,9 +9,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # FIXME: temporarily removing nightly due to failing build.
-        # julia-version: ['1.0', '1.6', '1.9', 'nightly']
-        julia-version: ['1.0', '1.6', '1.9', '1.10']
+        julia-version: ['1.0', '1.6', '1.9', 'nightly']
         julia-arch: [x64]
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
