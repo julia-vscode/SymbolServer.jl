@@ -141,7 +141,7 @@ end
         @test length(readdir(store_path)) == 0
     end
 
-    @testset "issues/285"
+    @testset "issues/285" begin
         mktempdir() do path
             cp(joinpath(@__DIR__, "testenv2"), path; force=true)
 
