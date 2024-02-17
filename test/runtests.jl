@@ -141,40 +141,44 @@ end
         @test length(readdir(store_path)) == 0
     end
 
-    @testset "issues/285" begin
-        mktempdir() do path
-            cp(joinpath(@__DIR__, "testenv2"), path; force=true)
+    if VERSION >= v"1.6"
+        # The test-case uses a Manifest format that is incompatible with older versions of
+        # Julia.
+        @testset "issues/285" begin
+            mktempdir() do path
+                cp(joinpath(@__DIR__, "testenv2"), path; force=true)
 
-            project_path = joinpath(path, "proj")
+                project_path = joinpath(path, "proj")
 
-            store_path = joinpath(path, "store")
-            mkpath(store_path)
+                store_path = joinpath(path, "store")
+                mkpath(store_path)
 
-            jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
-            withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
-                run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+                jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+                withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+                    run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+                end
+
+                ssi = SymbolServerInstance("", store_path)
+                ret_status, store = getstore(ssi, project_path; download=false)
+                @test ret_status == :success
+                @test length(store) == 4
+                @test haskey(store, :Core)
+                @test haskey(store, :Base)
+                @test haskey(store, :Main)
+                @test haskey(store, :A)
+
+                # Inspect the cached version, and check that the package SHA has been computed
+                # correctly.
+                cache_path = joinpath(store_path, "A", "A_94f385dd-073b-49fe-b7ed-f824d09b3331", "v0.1.0_nothing.jstore")
+                @test isfile(cache_path)
+
+                cached_version = open(SymbolServer.CacheStore.read, cache_path)
+                @test !isnothing(cached_version.sha)
+                @test cached_version.sha == SymbolServer.sha2_256_dir(joinpath(path, "A", "src"))
+
+                SymbolServer.clear_disc_store(ssi)
+                @test length(readdir(store_path)) == 0
             end
-
-            ssi = SymbolServerInstance("", store_path)
-            ret_status, store = getstore(ssi, project_path; download=false)
-            @test ret_status == :success
-            @test length(store) == 4
-            @test haskey(store, :Core)
-            @test haskey(store, :Base)
-            @test haskey(store, :Main)
-            @test haskey(store, :A)
-
-            # Inspect the cached version, and check that the package SHA has been computed
-            # correctly.
-            cache_path = joinpath(store_path, "A", "A_94f385dd-073b-49fe-b7ed-f824d09b3331", "v0.1.0_nothing.jstore")
-            @test isfile(cache_path)
-
-            cached_version = open(SymbolServer.CacheStore.read, cache_path)
-            @test !isnothing(cached_version.sha)
-            @test cached_version.sha == SymbolServer.sha2_256_dir(joinpath(path, "A", "src"))
-
-            SymbolServer.clear_disc_store(ssi)
-            @test length(readdir(store_path)) == 0
         end
     end
 
