@@ -229,7 +229,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     # 1.11 introduces the --compiled-modules=existing option, which should be much faster than no
     #   as of 2023-11-09, loading Pkg with --compiled-modules=no also changes something with the
     #   active project, which breaks the server.jl script
-    symbol_server_julia_version = parse(VersionNumber,  readchomp(Cmd(`$(ssi.julia_exe_path) --startup-file=no --history-file=no -e "println(VERSION)"`)))
+    symbol_server_julia_version = VersionNumber(readchomp(Cmd(`$(ssi.julia_exe_path) --startup-file=no --history-file=no -e "println(VERSION)"`)))
     p = if symbol_server_julia_version > v"1.11-"
         open(pipeline(Cmd(`$(ssi.julia_exe_path) --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=existing --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr), read=true, write=true)
     else
