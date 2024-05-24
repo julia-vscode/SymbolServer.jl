@@ -28,7 +28,7 @@ mutable struct SymbolServerInstance
         if symbolcache_upstream === nothing
             symbolcache_upstream = "https://www.julia-vscode.org/symbolcache"
         end
-        return new(nothing, depot_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path, julia_exe_path === nothing ? joinpath(Sys.BINDIR, Base.julia_exename()) : julia_exe_path, symbolcache_upstream)
+        return new(nothing, depot_path, julia_exe_path === nothing ? joinpath(Sys.BINDIR, Base.julia_exename()) : julia_exe_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path, symbolcache_upstream)
     end
 end
 
