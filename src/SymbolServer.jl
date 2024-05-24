@@ -24,7 +24,7 @@ mutable struct SymbolServerInstance
     store_path::String
     symbolcache_upstream::String
 
-    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing, julia_exe_path::Union{String,Nothing}; symbolcache_upstream = nothing)
+    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing, julia_exe_path::Union{String,Nothing}=nothing; symbolcache_upstream = nothing)
         if symbolcache_upstream === nothing
             symbolcache_upstream = "https://www.julia-vscode.org/symbolcache"
         end
