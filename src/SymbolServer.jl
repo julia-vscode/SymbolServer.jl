@@ -20,15 +20,16 @@ mutable struct SymbolServerInstance
     process::Union{Nothing,Base.Process}
     depot_path::String
     julia_exe_path::String
+    julia_exe_version::VersionNumber
     canceled_processes::Set{Process}
     store_path::String
     symbolcache_upstream::String
 
-    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing, julia_exe_path::Union{String,Nothing}=nothing; symbolcache_upstream = nothing)
+    function SymbolServerInstance(depot_path::String="", store_path::Union{String,Nothing}=nothing, julia_exe::Union{NamedTuple{(:path,:version),Tuple{String,VersionNumber}},Nothing}=nothing; symbolcache_upstream = nothing)
         if symbolcache_upstream === nothing
             symbolcache_upstream = "https://www.julia-vscode.org/symbolcache"
         end
-        return new(nothing, depot_path, julia_exe_path === nothing ? joinpath(Sys.BINDIR, Base.julia_exename()) : julia_exe_path, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path, symbolcache_upstream)
+        return new(nothing, depot_path, julia_exe === nothing ? joinpath(Sys.BINDIR, Base.julia_exename()) : julia_exe.path, julia_exe === nothing ? VERSION : julia_exe.version, Set{Process}(), store_path === nothing ? abspath(joinpath(@__DIR__, "..", "store")) : store_path, symbolcache_upstream)
     end
 end
 
@@ -229,8 +230,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
     # 1.11 introduces the --compiled-modules=existing option, which should be much faster than no
     #   as of 2023-11-09, loading Pkg with --compiled-modules=no also changes something with the
     #   active project, which breaks the server.jl script
-    symbol_server_julia_version = VersionNumber(readchomp(Cmd(`$(ssi.julia_exe_path) --startup-file=no --history-file=no -e "println(VERSION)"`)))
-    p = if symbol_server_julia_version > v"1.11-"
+    p = if ssi.julia_exe_version > v"1.11-"
         open(pipeline(Cmd(`$(ssi.julia_exe_path) --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=existing --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr), read=true, write=true)
     else
         open(pipeline(Cmd(`$(ssi.julia_exe_path) --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr), read=true, write=true)
