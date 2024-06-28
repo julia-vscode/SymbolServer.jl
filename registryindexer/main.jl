@@ -4,7 +4,7 @@ max_n = 1_000_000
 max_versions = 1_000_000
 max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
-julia_versions = [v"1.7.2"]
+julia_versions = [v"1.10.4"]
 
 using Pkg
 
