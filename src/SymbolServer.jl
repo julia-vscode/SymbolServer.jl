@@ -3,6 +3,7 @@ module SymbolServer
 export SymbolServerInstance, getstore
 
 using Pkg, SHA
+using Pkg.Registry: PkgEntry
 using Base: UUID, Process
 import Sockets, UUIDs
 
