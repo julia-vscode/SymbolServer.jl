@@ -3,9 +3,12 @@ module SymbolServer
 export SymbolServerInstance, getstore
 
 using Pkg, SHA
-using Pkg.Registry: PkgEntry
 using Base: UUID, Process
 import Sockets, UUIDs
+
+@static if VERSION >= v"1.7-"
+    using Pkg.Registry: PkgEntry
+end
 
 # this is required to get parsedocs to work on Julia 1.11 and newer, since the implementation
 # moved there
@@ -38,7 +41,7 @@ const GENERAL_REGISTRY_UUID = UUID("23338594-aafe-5451-b93e-139f81909106")
 function get_general_pkgs()
     dp_before = copy(Base.DEPOT_PATH)
     try
-        # because the env var JULIA_DEPOT_PATH is overritten this is probably the best
+        # because the env var JULIA_DEPOT_PATH is overwritten this is probably the best
         # guess depot location
         push!(empty!(Base.DEPOT_PATH), joinpath(homedir(), ".julia"))
         @static if VERSION >= v"1.7-"
@@ -52,7 +55,7 @@ function get_general_pkgs()
                 reg = Pkg.Types.read_registry(joinpath(r.path, "Registry.toml"))
                 return reg["packages"]
             end
-            return Dict{UUID, PkgEntry}()
+            return Dict{String, Any}()
         end
     finally
         append!(empty!(Base.DEPOT_PATH), dp_before)
