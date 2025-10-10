@@ -628,13 +628,13 @@ function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay, percentage =
     if pid in keys(Base.loaded_modules)
         conn !== nothing && println(conn, "PROCESSPKG;$pe_name;$uuid;noversion;$percentage")
         loadingbay.eval(:($(Symbol(pe_name)) = $(Base.loaded_modules[pid])))
-        m = invokelatest(() -> getfield(loadingbay, Symbol(pe_name)))
+        m = Base.invokelatest(() -> getfield(loadingbay, Symbol(pe_name)))
     else
         m = try
             conn !== nothing && println(conn, "STARTLOAD;$pe_name;$uuid;noversion;$percentage")
             loadingbay.eval(:(import $(Symbol(pe_name))))
             conn !== nothing && println(conn, "STOPLOAD;$pe_name")
-            m = invokelatest(() -> getfield(loadingbay, Symbol(pe_name)))
+            m = Base.invokelatest(() -> getfield(loadingbay, Symbol(pe_name)))
         catch
             return
         end
