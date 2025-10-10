@@ -234,7 +234,7 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         path = ssi.julia_exe_path
         spath = split(path)
         # is julia up spec
-        if length(spath) == 2 && occursin(r"^+\d", spath[2])
+        if length(spath) == 2 && occursin(r"^\+\d", spath[2])
             path = spath
         else
             path = [path]
