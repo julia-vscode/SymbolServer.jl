@@ -43,7 +43,7 @@ function get_general_pkgs()
         @static if VERSION >= v"1.7-"
             regs = Pkg.Types.Context().registries
             i = findfirst(r -> r.name == "General" && r.uuid == GENERAL_REGISTRY_UUID, regs)
-            i === nothing && return Dict{UUID, PkgEntry}()
+            i === nothing && return Dict()
             return regs[i].pkgs
         else
             for r in Pkg.Types.collect_registries()
@@ -51,7 +51,7 @@ function get_general_pkgs()
                 reg = Pkg.Types.read_registry(joinpath(r.path, "Registry.toml"))
                 return reg["packages"]
             end
-            return Dict{UUID, PkgEntry}()
+            return Dict()
         end
     finally
         append!(empty!(Base.DEPOT_PATH), dp_before)
