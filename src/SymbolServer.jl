@@ -245,13 +245,14 @@ function getstore(ssi::SymbolServerInstance, environment_path::AbstractString, p
         else
             open(pipeline(Cmd(`$(cmd) --code-coverage=$(use_code_coverage==0 ? "none" : "user") --startup-file=no --compiled-modules=no --history-file=no --project=$environment_path $server_script $(ssi.store_path) $pipename`, env=env_to_use),  stderr=stderr), read=true, write=true)
         end
-        ssi.process = p
     catch err
         if stderr_for_client_process !== nothing
             showerror(stderr_for_client_process, err)
         end
         return :failure, stderr_for_client_process
     end
+
+    ssi.process = p
 
     yield()
 
