@@ -341,8 +341,13 @@ extends_methods(f::FunctionStore) = f.name != f.extends
 get_top_module(vr::VarRef) = vr.parent === nothing ? vr.name : get_top_module(vr.parent)
 
 # Sorting is the main performance of calling `names`
-unsorted_names(m::Module; all::Bool=false, imported::Bool=false) =
-    ccall(:jl_module_names, Array{Symbol,1}, (Any, Cint, Cint), m, all, imported)
+@static if VERSION < v"1.12-"
+    unsorted_names(m::Module; all::Bool=false, imported::Bool=false, usings=false) =
+        ccall(:jl_module_names, Array{Symbol,1}, (Any, Cint, Cint), m, all, imported)
+else
+    unsorted_names(m::Module; all::Bool=false, imported::Bool=false, usings=false) =
+         ccall(:jl_module_names, Array{Symbol,1}, (Any, Cint, Cint, Cint), m, all, imported, usings)
+end
 
 ## recursive_copy
 #

@@ -4,11 +4,14 @@ using Base: UUID
 using Test
 
 allns = SymbolServer.getallns()
-function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env)
+function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env; excludecore = false)
     notfound = Symbol[]
     notfoundhidden = Symbol[]
     for n in names(m, all=true)
         if isdefined(m, n) && !haskey(cache.vals, n)
+            if excludecore && isdefined(Core, n)
+                continue
+            end
             push!(notfound, n)
         end
     end
@@ -67,8 +70,17 @@ end
     SymbolServer.symbols(env)
     r = missingsymbols(Core, env[:Core], env)
     @test length.(r) == (0, 0)
-    r = missingsymbols(Base, env[:Base], env)
-    @test length.(r) == (0, 0)
+
+    if VERSION >= v"1.12-"
+        # on 1.12, names() includes bindings from Core in Base even not requested,
+        # so we filter those out here
+        r = missingsymbols(Base, env[:Base], env; excludecore = true)
+        @test length.(r) == (0, 0)
+    else
+        r = missingsymbols(Base, env[:Base], env)
+        @test length.(r) == (0, 0)
+    end
+
     @testset "VarRef loops" begin
         check_varrefs(env)
     end

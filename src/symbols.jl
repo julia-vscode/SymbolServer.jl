@@ -21,6 +21,8 @@ Base.getindex(m::ModuleStore, k) = m.vals[k]
 Base.setindex!(m::ModuleStore, v, k) = (m.vals[k] = v)
 Base.haskey(m::ModuleStore, k) = haskey(m.vals, k)
 
+Base.show(io::IO, ms::ModuleStore) = print(io, "ModuleStore($(ms.name)) with $(length(ms.vals)) entries")
+
 const EnvStore = Dict{Symbol,ModuleStore}
 
 struct Package
@@ -39,6 +41,14 @@ struct MethodStore
     sig::Vector{Pair{Any,Any}}
     kws::Vector{Symbol}
     rt::Any
+end
+
+function Base.show(io::IO, ms::MethodStore)
+    print(io, ms.mod, ".", ms.name, "(")
+    for (a,b) in ms.sig
+        print(io, a, "::", b)
+    end
+    print(io, ") at ", ms.file, ":", ms.line, )
 end
 
 struct DataTypeStore <: SymStore
@@ -77,6 +87,10 @@ function DataTypeStore(@nospecialize(t), symbol, parent_mod, exported)
     DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, isconcretetype(ur_t) && fieldcount(ur_t) > 0 ? collect(fieldnames(ur_t)) : Symbol[], MethodStore[], _doc(Base.Docs.Binding(parent_mod, symbol)), exported)
 end
 
+function Base.show(io::IO, dts::DataTypeStore)
+    print(io, dts.name, " <: ", dts.super, " with $(length(dts.methods)) methods")
+end
+
 struct FunctionStore <: SymStore
     name::VarRef
     methods::Vector{MethodStore}
@@ -91,6 +105,10 @@ function FunctionStore(@nospecialize(f), symbol, parent_mod, exported)
     else
         FunctionStore(VarRef(VarRef(parent_mod), nameof(f)), MethodStore[], _doc(Base.Docs.Binding(parent_mod, symbol)), VarRef(VarRef(parentmodule(f)), nameof(f)), exported)
     end
+end
+
+function Base.show(io::IO, fs::FunctionStore)
+    print(io, fs.name, " with $(length(fs.methods)) methods")
 end
 
 struct GenericStore <: SymStore
@@ -246,7 +264,9 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         elseif !(modstore[name] isa DataTypeStore || modstore[name] isa FunctionStore)
             modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[m[2]], "", func_vr, false)
         else
-            push!(modstore[name].methods, m[2])
+            if !(m[2] in modstore[name].methods)
+                push!(modstore[name].methods, m[2])
+            end
         end
     end
     return ms
@@ -273,7 +293,7 @@ end
 function apply_to_everything(f, m = nothing, visited = Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
-        for s in unsorted_names(m, all = true, imported = true)
+        for s in unsorted_names(m, all = true, imported = true, usings = true)
             (!isdefined(m, s) || s == nameof(m)) && continue
             x = getfield(m, s)
             f(x)
@@ -294,7 +314,7 @@ function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
         state = nothing
-        for s in unsorted_names(m, all = true, imported = true)
+        for s in unsorted_names(m, all = true, imported = true, usings = true)
             !isdefined(m, s) && continue
             x = getfield(m, s)
             state = f(m, s, x, state)
@@ -363,7 +383,7 @@ istoplevelmodule(m) = parentmodule(m) === m || parentmodule(m) === Main
 function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     push!(visited, m)
     cache = ModuleStore(m)
-    for s in unsorted_names(m, all = true, imported = true)
+    for s in unsorted_names(m, all = true, imported = true, usings = true)
         !isdefined(m, s) && continue
         x = getfield(m, s)
         if x isa Module
@@ -401,7 +421,7 @@ end
 all_names(m) = all_names(m, x -> isdefined(m, x))
 function all_names(m, pred, symbols = Set(Symbol[]), seen = Set(Module[]))
     push!(seen, m)
-    ns = unsorted_names(m; all = true, imported = false)
+    ns = unsorted_names(m; all = true, imported = false, usings = false)
     for n in ns
         isdefined(m, n) || continue
         Base.isdeprecated(m, n) && continue
@@ -416,6 +436,11 @@ function all_names(m, pred, symbols = Set(Symbol[]), seen = Set(Module[]))
     symbols
 end
 
+# On 1.12, names() includes bindings from Core in Base even not requested,
+# so we filter those out below. This could also be a version check, but doing it
+# this way should be more robust
+const CORE_BASE_NAMES_CONFUSION = :Bool in names(Base)
+
 function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Base.IdSet{Symbol} = getallns(), visited = Base.IdSet{Module}();  get_return_type = false)
     if m isa Module
         cache = _lookup(VarRef(m), env, true)
@@ -425,8 +450,13 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
         for s in ns
             !isdefined(m, s) && continue
             x = getfield(m, s)
+
+            if CORE_BASE_NAMES_CONFUSION && m === Base && isdefined(Core, s) && getfield(Core, s) === x
+                continue
+            end
+
             if Base.unwrap_unionall(x) isa DataType # Unions aren't handled here.
-                if parentmodule((x)) === m
+                if parentmodule(x) === m
                     cache[s] = DataTypeStore(x, s, m, s in getnames(m))
                     cache_methods(x, s, env, get_return_type)
                 elseif nameof(x) !== s
