@@ -76,8 +76,8 @@ function _parameter(@nospecialize(p))
     end
 end
 
-Base.print(io::IO, vr::VarRef) = vr.parent === nothing ? print(io, vr.name) : print(io, vr.parent, ".", vr.name)
-function Base.print(io::IO, tn::FakeTypeName)
+Base.show(io::IO, vr::VarRef) = vr.parent === nothing ? print(io, vr.name) : print(io, vr.parent, ".", vr.name)
+function Base.show(io::IO, tn::FakeTypeName)
     print(io, tn.name)
     if !isempty(tn.parameters)
         print(io, "{")
@@ -88,17 +88,17 @@ function Base.print(io::IO, tn::FakeTypeName)
         print(io, "}")
     end
 end
-Base.print(io::IO, x::FakeUnionAll) = print(io, x.body, " where ", x.var)
-function Base.print(io::IO, x::FakeUnion; inunion=false)
-    !inunion && print(io,  "Union{")
+Base.show(io::IO, x::FakeUnionAll) = print(io, x.body, " where ", x.var)
+function Base.show(io::IO, x::FakeUnion; inunion=false)
+    !inunion && print(io, "Union{")
     print(io, x.a, ",")
     if x.b isa FakeUnion
-        print(io, x.b, inunion=true)
+        Base.show(io, x.b; inunion=true)
     else
         print(io, x.b, "}")
     end
 end
-function Base.print(io::IO, x::FakeTypeVar)
+function Base.show(io::IO, x::FakeTypeVar)
     if isfakebottom(x.lb)
         if isfakeany(x.ub)
             print(io, x.name)
@@ -125,6 +125,13 @@ Base.:(==)(a::FakeTypeVar, b::FakeTypeVar) = a.lb == b.lb && a.name == b.name &&
 Base.:(==)(a::FakeUnionAll, b::FakeUnionAll) = a.var == b.var && a.body == b.body
 Base.:(==)(a::FakeUnion, b::FakeUnion) = a.a == b.a && a.b == b.b
 Base.:(==)(a::FakeTypeofBottom, b::FakeTypeofBottom) = true
+
+Base.hash(a::FakeTypeName, h::UInt) = hash(a.name, hash(a.parameters, hash(:FakeTypeName, h)))
+Base.hash(a::VarRef, h::UInt) = hash(a.name, hash(a.parent, hash(:VarRef, h)))
+Base.hash(a::FakeTypeVar, h::UInt) = hash(a.name, hash(a.lb, hash(a.ub, hash(:FakeTypeVar, h))))
+Base.hash(a::FakeUnionAll, h::UInt) = hash(a.var, hash(a.body, hash(:FakeUnionAll, h)))
+Base.hash(a::FakeUnion, h::UInt) = hash(a.a, hash(a.b, hash(:FakeUnion, h)))
+Base.hash(::FakeTypeofBottom, h::UInt) = hash(:FakeTypeofBottom, h)
 
 @static if !(Vararg isa Type)
     struct FakeTypeofVararg
