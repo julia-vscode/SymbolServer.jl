@@ -196,6 +196,17 @@ function sha_pkg(manifest_dir::AbstractString, pe::PackageEntry)
     return isdir(src_path) ? sha2_256_dir(src_path) : nothing
 end
 
+function _doc(mod::Module, sym::Symbol)
+    try
+        # constructing the binding may fail with e.g. "Constant binding was imported from multiple modules",
+        # so we just wrap this in yet another try-catch
+        _doc(Base.Docs.Binding(mod, sym))
+    catch err
+        @debug "Error computing docs for binding ($mod, $sym)" ex=(err, catch_backtrace())
+        return ""
+    end
+end
+
 function _doc(binding::Base.Docs.Binding)
     try
         sig = Union{}
@@ -204,7 +215,7 @@ function _doc(binding::Base.Docs.Binding)
             result === nothing || return string(result)
         end
         results, groups = Base.Docs.DocStr[], Base.Docs.MultiDoc[]
-    # Lookup `binding` and `sig` for matches in all modules of the docsystem.
+        # Lookup `binding` and `sig` for matches in all modules of the docsystem.
         for mod in Base.Docs.modules
             dict = Base.Docs.meta(mod)::IdDict{Any,Any}
             if haskey(dict, binding)
