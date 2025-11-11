@@ -40,7 +40,7 @@ function read_manifest(manifest_filename)
             return m.deps
         end
     catch err
-        @warn "Could not load manifest." exception=(err, catch_backtrace())
+        @warn "Could not load manifest." exception = (err, catch_backtrace())
         return nothing
     end
 end
@@ -202,7 +202,7 @@ function _doc(mod::Module, sym::Symbol)
         # so we just wrap this in yet another try-catch
         _doc(Base.Docs.Binding(mod, sym))
     catch err
-        @debug "Error computing docs for binding ($mod, $sym)" ex=(err, catch_backtrace())
+        @debug "Error computing docs for binding ($mod, $sym)" ex = (err, catch_backtrace())
         return ""
     end
 end
@@ -357,7 +357,7 @@ get_top_module(vr::VarRef) = vr.parent === nothing ? vr.name : get_top_module(vr
         ccall(:jl_module_names, Array{Symbol,1}, (Any, Cint, Cint), m, all, imported)
 else
     unsorted_names(m::Module; all::Bool=false, imported::Bool=false, usings=false) =
-         ccall(:jl_module_names, Array{Symbol,1}, (Any, Cint, Cint, Cint), m, all, imported, usings)
+        ccall(:jl_module_names, Array{Symbol,1}, (Any, Cint, Cint, Cint), m, all, imported, usings)
 end
 
 ## recursive_copy
@@ -412,40 +412,40 @@ recursive_copy(ua::FakeUnionAll) = FakeUnionAll(recursive_copy(ua.var), recursiv
 end
 
 recursive_copy(m::ModuleStore) = ModuleStore(recursive_copy(m.name), recursive_copy(m.vals), m.doc,
-                                             m.exported, copy(m.exportednames), copy(m.used_modules))
+    m.exported, copy(m.exportednames), copy(m.used_modules))
 
 recursive_copy(p::Package) = Package(p.name,
-                                     recursive_copy(p.val),
-                                     p.uuid,
-                                     recursive_copy(p.sha))
+    recursive_copy(p.val),
+    p.uuid,
+    recursive_copy(p.sha))
 
 recursive_copy(ms::MethodStore) = MethodStore(ms.name,
-                                              ms.mod,
-                                              ms.file,
-                                              ms.line,
-                                              recursive_copy(ms.sig),
-                                              copy(ms.kws),
-                                              recursive_copy(ms.rt))
+    ms.mod,
+    ms.file,
+    ms.line,
+    recursive_copy(ms.sig),
+    copy(ms.kws),
+    recursive_copy(ms.rt))
 
 recursive_copy(dts::DataTypeStore) = DataTypeStore(recursive_copy(dts.name),
-                                                   recursive_copy(dts.super),
-                                                   recursive_copy(dts.parameters),
-                                                   recursive_copy(dts.types),
-                                                   recursive_copy(dts.fieldnames),
-                                                   recursive_copy(dts.methods),
-                                                   dts.doc,
-                                                   dts.exported)
+    recursive_copy(dts.super),
+    recursive_copy(dts.parameters),
+    recursive_copy(dts.types),
+    recursive_copy(dts.fieldnames),
+    recursive_copy(dts.methods),
+    dts.doc,
+    dts.exported)
 
 recursive_copy(fs::FunctionStore) = FunctionStore(recursive_copy(fs.name),
-                                                  recursive_copy(fs.methods),
-                                                  fs.doc,
-                                                  recursive_copy(fs.extends),
-                                                  fs.exported)
+    recursive_copy(fs.methods),
+    fs.doc,
+    recursive_copy(fs.extends),
+    fs.exported)
 
 recursive_copy(gs::GenericStore) = GenericStore(recursive_copy(gs.name),
-                                                recursive_copy(gs.typ),
-                                                gs.doc,
-                                                gs.exported)
+    recursive_copy(gs.typ),
+    gs.doc,
+    gs.exported)
 
 
 # Tools for modifying source location
@@ -636,7 +636,7 @@ function get_pkg_path(pkg::Base.PkgId, env, depot_path)
     return nothing
 end
 
-function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay, percentage = missing)
+function load_package(c::Pkg.Types.Context, uuid, conn, loadingbay, percentage=missing)
     isinmanifest(c, uuid isa String ? Base.UUID(uuid) : uuid) || return
     pe_name = packagename(c, uuid)
 
@@ -681,7 +681,7 @@ function get_cache_path(manifest, uuid)
             ver = VERSION
         end
     end
-    ver = replace(string(ver), '+'=>'_')
+    ver = replace(string(ver), '+' => '_')
     th = tree_hash(pkg_info)
     th = th === nothing ? "nothing" : th
 

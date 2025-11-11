@@ -13,7 +13,7 @@ current_package_treehash = ARGS[4]
 # This path will always be mounted in the docker container in which we are running
 store_path = "/symcache"
 
-current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
+current_package_versionwithoutplus = replace(string(current_package_version), '+' => '_')
 filename_with_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash.jstore"
 
 module LoadingBay end
@@ -45,7 +45,7 @@ end
 env = getenvtree([current_package_name])
 symbols(env, m, get_return_type=true)
 
- # Strip out paths
+# Strip out paths
 modify_dirs(env[current_package_name], f -> modify_dir(f, pkg_src_dir(Base.loaded_modules[Base.PkgId(current_package_uuid, string(current_package_name))]), "PLACEHOLDER"))
 
 # There's an issue here - @enum used within CSTParser seems to add a method that is introduced from Enums.jl...
