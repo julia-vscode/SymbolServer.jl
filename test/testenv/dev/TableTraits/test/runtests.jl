@@ -4,9 +4,9 @@ using Test
 
 @testset "TableTraits" begin
 
-    table_array = [(a = 1,), (a = 2,)]
-    any_table_array = Any[(a = 1,), (a = 2,)]
-    other_array = [1,2,3]
+    table_array = [(a=1,), (a=2,)]
+    any_table_array = Any[(a=1,), (a=2,)]
+    other_array = [1, 2, 3]
     without_eltype = (i for i in table_array)
 
     @test isiterabletable(table_array)
