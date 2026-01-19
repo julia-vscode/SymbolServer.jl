@@ -303,8 +303,9 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
         return
     end
 
-    manifest_filename = first(get_manifest_candidates(environment_path, VERSION))
-    manifest = read_manifest(manifest_filename)
+    manifest_candidates = get_manifest_candidates(environment_path, VERSION)
+    isempty(manifest_candidates) && return
+    manifest = read_manifest(first(manifest_candidates))
     manifest === nothing && return
     uuids = values(deps(project))
     num_uuids = length(values(deps(project)))
