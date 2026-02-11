@@ -98,14 +98,9 @@ function download_cache_files(ssi, environment_path, progress_callback)
     mkpath(download_dir_parent)
 
     mktempdir(download_dir_parent) do download_dir
-        candidates = [
-            joinpath(environment_path, "JuliaManifest.toml"),
-            joinpath(environment_path, "Manifest.toml")
-        ]
+        candidates = get_manifest_candidates(environment_path, VERSION)
 
         for manifest_filename in candidates
-            !isfile(manifest_filename) && continue
-
             manifest = read_manifest(manifest_filename)
             manifest === nothing && continue
 
@@ -308,8 +303,9 @@ function load_project_packages_into_store!(ssi::SymbolServerInstance, environmen
         return
     end
 
-    manifest_filename = isfile(joinpath(environment_path, "JuliaManifest.toml")) ? joinpath(environment_path, "JuliaManifest.toml") : joinpath(environment_path, "Manifest.toml")
-    manifest = read_manifest(manifest_filename)
+    manifest_candidates = get_manifest_candidates(environment_path, VERSION)
+    isempty(manifest_candidates) && return
+    manifest = read_manifest(first(manifest_candidates))
     manifest === nothing && return
     uuids = values(deps(project))
     num_uuids = length(values(deps(project)))

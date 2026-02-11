@@ -702,3 +702,23 @@ function write_depot(server::Server, ctx, written_caches)
         !isempty(written_path) && push!(written_caches, written_path)
     end
 end
+
+"""
+    get_manifest_candidates(environment_path, version = VERSION)
+
+Return a vector containing manifest candidates if they exist, including version-specific manifests.
+"""
+function get_manifest_candidates(environment_path, version = VERSION)
+    return filter(
+        isfile,
+        joinpath.(
+            environment_path,
+            [
+                "JuliaManifest-v$(version.major).$(version.minor).toml",
+                "Manifest-v$(version.major).$(version.minor).toml",
+                "JuliaManifest.toml",
+                "Manifest.toml",
+            ]
+        )
+    )
+end
