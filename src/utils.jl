@@ -714,9 +714,10 @@ function get_manifest_candidates(environment_path, version = VERSION)
         joinpath.(
             environment_path,
             [
+                "JuliaManifest-v$(version.major).$(version.minor).toml",
                 "Manifest-v$(version.major).$(version.minor).toml",
-                "Manifest.toml",
                 "JuliaManifest.toml",
+                "Manifest.toml",
             ]
         )
     )
