@@ -97,7 +97,7 @@ end
 # Load all packages together
 # This is important, or methods added to functions in other packages that are loaded earlier would not be in the cache
 for (i, uuid) in enumerate(packages_to_load)
-    load_package(ctx, uuid, conn, LoadingBay, round(Int, 100*(i - 1)/length(packages_to_load)))
+    load_package(ctx, uuid, conn, LoadingBay, round(Int, 100 * (i - 1) / length(packages_to_load)))
 end
 
 # Create image of whole package env. This creates the module structure only.
@@ -109,8 +109,8 @@ visited = Base.IdSet{Module}([Base, Core])
 
 for (pid, m) in Base.loaded_modules
     if pid.uuid !== nothing && is_stdlib(pid.uuid) &&
-        isinmanifest(ctx, pid.uuid) &&
-        isfile(joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), pid.uuid)...))
+       isinmanifest(ctx, pid.uuid) &&
+       isfile(joinpath(server.storedir, SymbolServer.get_cache_path(manifest(ctx), pid.uuid)...))
         push!(visited, m)
         delete!(env_symbols, Symbol(pid.name))
     end
