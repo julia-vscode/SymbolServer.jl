@@ -169,7 +169,7 @@ function write_vector(io, x)
     end
 end
 
-function read(io, t = Base.read(io, UInt8))
+function read(io, t=Base.read(io, UInt8))
     # There are a bunch of `yield`s in potentially expensive code paths.
     # One top-level `yield` would probably increase responsiveness in the
     # LS, but increases runtime by 3x. This seems like a good compromise.
@@ -221,7 +221,7 @@ function read(io, t = Base.read(io, UInt8))
         file = read(io)
         line = Base.read(io, UInt32)
         nsig = Base.read(io, Int)
-        sig = Vector{Pair{Any, Any}}(undef, nsig)
+        sig = Vector{Pair{Any,Any}}(undef, nsig)
         for i in 1:nsig
             sig[i] = read(io) => read(io)
         end
@@ -259,7 +259,7 @@ function read(io, t = Base.read(io, UInt8))
         false
     elseif t === TupleHeader
         N = Base.read(io, Int)
-        ntuple(i->read(io), N)
+        ntuple(i -> read(io), N)
     elseif t === PackageHeader
         yield()
         name = read(io)

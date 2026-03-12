@@ -4,7 +4,7 @@ using Base: UUID
 using Test
 
 allns = SymbolServer.getallns()
-function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env; excludecore = false)
+function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env; excludecore=false)
     notfound = Symbol[]
     notfoundhidden = Symbol[]
     for n in names(m, all=true)
@@ -74,7 +74,7 @@ end
     if VERSION >= v"1.12-"
         # on 1.12, names() includes bindings from Core in Base even not requested,
         # so we filter those out here
-        r = missingsymbols(Base, env[:Base], env; excludecore = true)
+        r = missingsymbols(Base, env[:Base], env; excludecore=true)
         @test length.(r) == (0, 0)
     else
         r = missingsymbols(Base, env[:Base], env)
@@ -122,7 +122,7 @@ end
         ssi = SymbolServerInstance("", store_path)
 
         @async begin
-            ret_status, store = getstore(ssi, path, download = false)
+            ret_status, store = getstore(ssi, path, download=false)
 
             @test ret_status == :canceled
         end
@@ -132,7 +132,7 @@ end
         sleep(1)
 
         # this will cancel the previous getstore request
-        ret_status2, store2 = getstore(ssi, path, download = false)
+        ret_status2, store2 = getstore(ssi, path, download=false)
 
         if ret_status2 == :failure
             @info String(take!(store2))

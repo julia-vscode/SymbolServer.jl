@@ -45,10 +45,10 @@ end
 
 function Base.show(io::IO, ms::MethodStore)
     print(io, ms.mod, ".", ms.name, "(")
-    for (a,b) in ms.sig
+    for (a, b) in ms.sig
         print(io, a, "::", b)
     end
-    print(io, ") at ", ms.file, ":", ms.line, )
+    print(io, ") at ", ms.file, ":", ms.line,)
 end
 
 struct DataTypeStore <: SymStore
@@ -136,7 +136,12 @@ function maybe_fix_path(file)
     return maybe_fixup_stdlib_path(file)
 end
 
-safe_isfile(x) = try isfile(x); catch; false end
+safe_isfile(x) =
+    try
+        isfile(x)
+    catch
+        false
+    end
 const BUILDBOT_STDLIB_PATH = dirname(abspath(joinpath(String((@which versioninfo()).file), "..", "..", "..")))
 replace_buildbot_stdlibpath(str::String) = replace(str, BUILDBOT_STDLIB_PATH => Sys.STDLIB)
 """
@@ -165,7 +170,7 @@ _default_world_age() =
     end
 
 const _global_method_cache = IdDict{Any,Vector{Any}}()
-function methodinfo(@nospecialize(f); types = Tuple, world = _default_world_age())
+function methodinfo(@nospecialize(f); types=Tuple, world=_default_world_age())
     key = (f, types, world)
     if haskey(_global_method_cache, key)
         return _global_method_cache[key]
@@ -200,9 +205,9 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
     world = _default_world_age()
     ms = Tuple{Module,MethodStore}[]
     methods0 = try
-        methodinfo(f; types = types, world = world)
+        methodinfo(f; types=types, world=world)
     catch err
-        @debug "Error in method lookup for $f" ex=(err, catch_backtrace())
+        @debug "Error in method lookup for $f" ex = (err, catch_backtrace())
         return ms
     end
     ind_of_method_w_kws = Int[] # stores the index of methods with kws.
@@ -290,10 +295,10 @@ else
     end
 end
 
-function apply_to_everything(f, m = nothing, visited = Base.IdSet{Module}())
+function apply_to_everything(f, m=nothing, visited=Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
-        for s in unsorted_names(m, all = true, imported = true, usings = true)
+        for s in unsorted_names(m, all=true, imported=true, usings=true)
             (!isdefined(m, s) || s == nameof(m)) && continue
             x = getfield(m, s)
             f(x)
@@ -310,11 +315,11 @@ end
 
 
 
-function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
+function oneverything(f, m=nothing, visited=Base.IdSet{Module}())
     if m isa Module
         push!(visited, m)
         state = nothing
-        for s in unsorted_names(m, all = true, imported = true, usings = true)
+        for s in unsorted_names(m, all=true, imported=true, usings=true)
             !isdefined(m, s) && continue
             x = getfield(m, s)
             state = f(m, s, x, state)
@@ -330,7 +335,7 @@ function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
 end
 
 const _global_symbol_cache_by_mod = IdDict{Module,Base.IdSet{Symbol}}()
-function build_namecache(m, s, @nospecialize(x), state::Union{Base.IdSet{Symbol},Nothing} = nothing)
+function build_namecache(m, s, @nospecialize(x), state::Union{Base.IdSet{Symbol},Nothing}=nothing)
     if state === nothing
         state = get(_global_symbol_cache_by_mod, m, nothing)
         if state === nothing
@@ -380,10 +385,10 @@ end
 usedby(outer, inner) = outer !== inner && isdefined(outer, nameof(inner)) && getproperty(outer, nameof(inner)) === inner && all(isdefined(outer, name) || !isdefined(inner, name) for name in unsorted_names(inner))
 istoplevelmodule(m) = parentmodule(m) === m || parentmodule(m) === Main
 
-function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
+function getmoduletree(m::Module, amn, visited=Base.IdSet{Module}())
     push!(visited, m)
     cache = ModuleStore(m)
-    for s in unsorted_names(m, all = true, imported = true, usings = true)
+    for s in unsorted_names(m, all=true, imported=true, usings=true)
         !isdefined(m, s) && continue
         x = getfield(m, s)
         if x isa Module
@@ -412,16 +417,16 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     cache
 end
 
-function getenvtree(names = nothing)
+function getenvtree(names=nothing)
     amn = allmodulenames()
     EnvStore(nameof(m) => getmoduletree(m, amn) for m in Base.loaded_modules_array() if names === nothing || nameof(m) in names)
 end
 
 # faster and more correct split_module_names
 all_names(m) = all_names(m, x -> isdefined(m, x))
-function all_names(m, pred, symbols = Set(Symbol[]), seen = Set(Module[]))
+function all_names(m, pred, symbols=Set(Symbol[]), seen=Set(Module[]))
     push!(seen, m)
-    ns = unsorted_names(m; all = true, imported = false, usings = false)
+    ns = unsorted_names(m; all=true, imported=false, usings=false)
     for n in ns
         isdefined(m, n) || continue
         Base.isdeprecated(m, n) && continue
@@ -441,7 +446,7 @@ end
 # this way should be more robust
 const CORE_BASE_NAMES_CONFUSION = :Bool in names(Base)
 
-function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Base.IdSet{Symbol} = getallns(), visited = Base.IdSet{Module}();  get_return_type = false)
+function symbols(env::EnvStore, m::Union{Module,Nothing}=nothing, allnames::Base.IdSet{Symbol}=getallns(), visited=Base.IdSet{Module}(); get_return_type=false)
     if m isa Module
         cache = _lookup(VarRef(m), env, true)
         cache === nothing && return
@@ -496,7 +501,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
                 if x === m
                     cache[s] = VarRef(x)
                 elseif parentmodule(x) === m
-                    symbols(env, x, allnames, visited, get_return_type = get_return_type)
+                    symbols(env, x, allnames, visited, get_return_type=get_return_type)
                 else
                     cache[s] = VarRef(x)
                 end
@@ -506,16 +511,16 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
         end
     else
         for m in Base.loaded_modules_array()
-            in(m, visited) || symbols(env, m, allnames, visited, get_return_type = get_return_type)
+            in(m, visited) || symbols(env, m, allnames, visited, get_return_type=get_return_type)
         end
     end
 end
 
 
-function load_core(; get_return_type = false)
+function load_core(; get_return_type=false)
     c = Pkg.Types.Context()
-    cache = getenvtree([:Core,:Base])
-    symbols(cache, get_return_type = get_return_type)
+    cache = getenvtree([:Core, :Base])
+    symbols(cache, get_return_type=get_return_type)
     cache[:Main] = ModuleStore(VarRef(nothing, :Main), Dict(), "", true, [], [])
 
     # This is wrong. Every module contains it's own include function.
@@ -531,7 +536,7 @@ function load_core(; get_return_type = false)
                 m1.file,
                 m1.line,
                 Pair{Any,Any}[
-                    :x => SymbolServer.FakeTypeName(SymbolServer.VarRef(SymbolServer.VarRef(nothing, :Core), :AbstractString), Any[])
+                    :x=>SymbolServer.FakeTypeName(SymbolServer.VarRef(SymbolServer.VarRef(nothing, :Core), :AbstractString), Any[])
                 ],
                 [],
                 m1.rt
@@ -542,7 +547,7 @@ function load_core(; get_return_type = false)
     cache[:Base][Symbol("@.")] = cache[:Base][Symbol("@__dot__")]
     cache[:Core][:Main] = GenericStore(VarRef(nothing, :Main), FakeTypeName(Module), _doc(Main, :Main), true)
     # Add built-ins
-    builtins = Symbol[nameof(getfield(Core, n).instance) for n in unsorted_names(Core, all = true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
+    builtins = Symbol[nameof(getfield(Core, n).instance) for n in unsorted_names(Core, all=true) if isdefined(Core, n) && getfield(Core, n) isa DataType && isdefined(getfield(Core, n), :instance) && getfield(Core, n).instance isa Core.Builtin]
     cnames = unsorted_names(Core)
     for f in builtins
         if !haskey(cache[:Core], f)
@@ -573,7 +578,7 @@ function load_core(; get_return_type = false)
     push!(cache[:Core][:fieldtype].methods, MethodStore(:fieldtype, :Core, "built-in", 0, [:t => FakeTypeName(DataType), :field => FakeTypeName(Symbol)], Symbol[], FakeTypeName(Type{T} where T)))
     push!(cache[:Core][:getfield].methods, MethodStore(:setfield, :Core, "built-in", 0, [:object => FakeTypeName(Any), :item => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:ifelse].methods, MethodStore(:ifelse, :Core, "built-in", 0, [:condition => FakeTypeName(Bool), :x => FakeTypeName(Any), :y => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
-    push!(cache[:Core][:invoke].methods, MethodStore(:invoke, :Core, "built-in", 0, [:f => FakeTypeName(Function), :x => FakeTypeName(Any), :argtypes => FakeTypeName(Type{T} where T) , :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
+    push!(cache[:Core][:invoke].methods, MethodStore(:invoke, :Core, "built-in", 0, [:f => FakeTypeName(Function), :x => FakeTypeName(Any), :argtypes => FakeTypeName(Type{T} where T), :args => FakeTypeName(Vararg{Any})], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:isa].methods, MethodStore(:isa, :Core, "built-in", 0, [:a => FakeTypeName(Any), :T => FakeTypeName(Type{T} where T)], Symbol[], FakeTypeName(Bool)))
     push!(cache[:Core][:isdefined].methods, MethodStore(:getproperty, :Core, "built-in", 0, [:value => FakeTypeName(Any), :field => FakeTypeName(Any)], Symbol[], FakeTypeName(Any)))
     push!(cache[:Core][:nfields].methods, MethodStore(:nfields, :Core, "built-in", 0, [:x => FakeTypeName(Any)], Symbol[], FakeTypeName(Int)))
@@ -637,7 +642,7 @@ function load_core(; get_return_type = false)
 end
 
 
-function collect_extended_methods(depot::EnvStore, extendeds = Dict{VarRef,Vector{VarRef}}())
+function collect_extended_methods(depot::EnvStore, extendeds=Dict{VarRef,Vector{VarRef}}())
     for m in depot
         collect_extended_methods(m[2], extendeds, m[2].name)
     end
@@ -654,7 +659,11 @@ function collect_extended_methods(mod::ModuleStore, extendeds, mname)
     end
 end
 
-getallns() = let allns = Base.IdSet{Symbol}(); oneverything((m, s, x, state) -> push!(allns, s)); allns end
+getallns() =
+    let allns = Base.IdSet{Symbol}()
+        oneverything((m, s, x, state) -> push!(allns, s))
+        allns
+    end
 
 """
     split_module_names(m::Module, allns)
@@ -685,5 +694,11 @@ function split_module_names(m::Module, allns)
     internal_names, availablenames
 end
 
-get_all_modules() = let allms = Base.IdSet{Module}(); apply_to_everything(x -> if x isa Module push!(allms, x) end); allms end
-get_used_modules(M, allms = get_all_modules()) = [m for m in allms if usedby(M, m)]
+get_all_modules() =
+    let allms = Base.IdSet{Module}()
+        apply_to_everything(x -> if x isa Module
+            push!(allms, x)
+        end)
+        allms
+    end
+get_used_modules(M, allms=get_all_modules()) = [m for m in allms if usedby(M, m)]
