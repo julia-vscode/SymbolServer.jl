@@ -1,73 +1,57 @@
-using SymbolServer, Pkg
-using SymbolServer: packagename, packageuuid, deps, manifest, project, version, Package, frommanifest, VarRef, _lookup
-using Base: UUID
-using Test
+using TestItemRunner
 
-allns = SymbolServer.getallns()
-function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env; excludecore = false)
-    notfound = Symbol[]
-    notfoundhidden = Symbol[]
-    for n in names(m, all=true)
-        if isdefined(m, n) && !haskey(cache.vals, n)
-            if excludecore && isdefined(Core, n)
-                continue
+@run_package_tests
+
+# Shared test module: computes expensive env + allns once per test process.
+# Used by testitems that need the fully-populated Core/Base symbol environment.
+@testmodule EnvSetup begin
+    using SymbolServer
+    env = SymbolServer.getenvtree([:Base, :Core])
+    SymbolServer.symbols(env)
+    allns = SymbolServer.getallns()
+end
+
+@testitem "Core and Base symbol completeness" setup=[EnvSetup] begin
+    using SymbolServer: VarRef, _lookup, ModuleStore
+
+    env = EnvSetup.env
+    allns = EnvSetup.allns
+
+    function missingsymbols(m::Module, cache::SymbolServer.ModuleStore, env; excludecore = false)
+        notfound = Symbol[]
+        notfoundhidden = Symbol[]
+        for n in names(m, all=true)
+            if isdefined(m, n) && !haskey(cache.vals, n)
+                if excludecore && isdefined(Core, n)
+                    continue
+                end
+                push!(notfound, n)
             end
-            push!(notfound, n)
         end
-    end
-    for n in allns
-        if isdefined(m, n) && !haskey(cache, n)
-            found = false
-            for u in cache.used_modules
-                if (submod = get(cache.vals, u, nothing)) !== nothing
-                    # m has used a submodule
-                    submod = submod isa VarRef ? _lookup(submod, env) : submod
-                    if submod isa SymbolServer.ModuleStore && n in submod.exportednames
+        for n in allns
+            if isdefined(m, n) && !haskey(cache, n)
+                found = false
+                for u in cache.used_modules
+                    if (submod = get(cache.vals, u, nothing)) !== nothing
+                        # m has used a submodule
+                        submod = submod isa VarRef ? _lookup(submod, env) : submod
+                        if submod isa ModuleStore && n in submod.exportednames
+                            found = true
+                            break
+                        end
+                    end
+                    if haskey(env, u) && haskey(env[u].vals, n)
+                        # m has used a toplevel module
                         found = true
                         break
                     end
                 end
-                if haskey(env, u) && haskey(env[u].vals, n)
-                    # m has used a toplevel module
-                    found = true
-                    break
-                end
-            end
-            !found && !(n in notfound) && push!(notfoundhidden, n)
-        end
-    end
-    notfound, notfoundhidden
-end
-
-# Check that we don't have any VarRefs that point to themselves or to nothing.
-function check_varrefs(env, m=nothing)
-    if m === nothing
-        for m in values(env)
-            check_varrefs(env, m)
-        end
-    else
-        for x in values(m.vals)
-            if x isa SymbolServer.VarRef && x.parent !== nothing
-                x0 = SymbolServer._lookup(x.parent, env, true)
-
-                if x0 === nothing && x.parent !== nothing && x.parent.name === :Pidfile
-                    # these are dynamically put into Base when loading FileWatching, so we
-                    # don't need to error out when not finding them from the root env
-                    continue
-                end
-
-                @test x0 !== nothing
-                @test x0 !== m
-            elseif x isa SymbolServer.ModuleStore
-                check_varrefs(env, x)
+                !found && !(n in notfound) && push!(notfoundhidden, n)
             end
         end
+        notfound, notfoundhidden
     end
-end
 
-@testset "SymbolServer" begin
-    env = SymbolServer.getenvtree([:Base, :Core])
-    SymbolServer.symbols(env)
     r = missingsymbols(Core, env[:Core], env)
     @test length.(r) == (0, 0)
 
@@ -80,33 +64,67 @@ end
         r = missingsymbols(Base, env[:Base], env)
         @test length.(r) == (0, 0)
     end
+end
 
-    @testset "VarRef loops" begin
-        check_varrefs(env)
-    end
+@testitem "VarRef loops" setup=[EnvSetup] begin
+    using SymbolServer: VarRef, _lookup, ModuleStore
 
-    @testset "Builtins have appropriate methods" begin
-        for n in names(Core, all=true)
-            if isdefined(Core, n) && (x = getfield(Core, n)) isa Core.Builtin && haskey(SymbolServer.stdlibs[:Core], n)
-                @test !isempty(SymbolServer.stdlibs[:Core][n].methods)
-                @test !isempty(first(SymbolServer.stdlibs[:Core][n].methods).sig)
+    env = EnvSetup.env
+
+    # Check that we don't have any VarRefs that point to themselves or to nothing.
+    function check_varrefs(env, m=nothing)
+        if m === nothing
+            for m in values(env)
+                check_varrefs(env, m)
+            end
+        else
+            for x in values(m.vals)
+                if x isa VarRef && x.parent !== nothing
+                    x0 = _lookup(x.parent, env, true)
+
+                    if x0 === nothing && x.parent !== nothing && x.parent.name === :Pidfile
+                        # these are dynamically put into Base when loading FileWatching, so we
+                        # don't need to error out when not finding them from the root env
+                        continue
+                    end
+
+                    @test x0 !== nothing
+                    @test x0 !== m
+                elseif x isa ModuleStore
+                    check_varrefs(env, x)
+                end
             end
         end
     end
 
-    @testset "`rand` methods" begin
-        @test !isempty(SymbolServer.stdlibs[:Base][:rand].methods)
-    end
+    check_varrefs(env)
+end
 
-    @testset "check caching of UnionAlls" begin
-        for n in names(Base)
-            !isdefined(Base, n) && continue
-            x = getfield(Base, n)
-            if x isa UnionAll && Base.unwrap_unionall(x) isa DataType && parentmodule(Base.unwrap_unionall(x)) == Base
-                @test SymbolServer.stdlibs[:Base][n] isa SymbolServer.DataTypeStore
-            end
+@testitem "Builtins have appropriate methods" begin
+    for n in names(Core, all=true)
+        if isdefined(Core, n) && (x = getfield(Core, n)) isa Core.Builtin && haskey(SymbolServer.stdlibs[:Core], n)
+            @test !isempty(SymbolServer.stdlibs[:Core][n].methods)
+            @test !isempty(first(SymbolServer.stdlibs[:Core][n].methods).sig)
         end
     end
+end
+
+@testitem "rand methods" begin
+    @test !isempty(SymbolServer.stdlibs[:Base][:rand].methods)
+end
+
+@testitem "check caching of UnionAlls" begin
+    for n in names(Base)
+        !isdefined(Base, n) && continue
+        x = getfield(Base, n)
+        if x isa UnionAll && Base.unwrap_unionall(x) isa DataType && parentmodule(Base.unwrap_unionall(x)) == Base
+            @test SymbolServer.stdlibs[:Base][n] isa SymbolServer.DataTypeStore
+        end
+    end
+end
+
+@testitem "testenv integration" begin
+    using Pkg
 
     mktempdir() do path
         cp(joinpath(@__DIR__, "testenv"), path; force=true)
@@ -152,95 +170,100 @@ end
 
         @test length(readdir(store_path)) == 0
     end
+end
 
-    if VERSION >= v"1.6"
-        # The test-case uses a Manifest format that is incompatible with older versions of
-        # Julia.
-        @testset "issues/285" begin
-            mktempdir() do path
-                cp(joinpath(@__DIR__, "testenv2"), path; force=true)
+@testitem "issues/285 testenv2" begin
+    VERSION < v"1.6" && return
 
-                project_path = joinpath(path, "proj")
+    using Pkg
 
-                store_path = joinpath(path, "store")
-                mkpath(store_path)
+    mktempdir() do path
+        cp(joinpath(@__DIR__, "testenv2"), path; force=true)
 
-                jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
-                withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
-                    run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
-                end
+        project_path = joinpath(path, "proj")
 
-                ssi = SymbolServerInstance("", store_path)
-                ret_status, store = getstore(ssi, project_path; download=false)
-                @test ret_status == :success
-                @test length(store) == 4
-                @test haskey(store, :Core)
-                @test haskey(store, :Base)
-                @test haskey(store, :Main)
-                @test haskey(store, :A)
+        store_path = joinpath(path, "store")
+        mkpath(store_path)
 
-                # Inspect the cached version, and check that the package SHA has been computed
-                # correctly.
-                cache_path = joinpath(store_path, "A", "A_94f385dd-073b-49fe-b7ed-f824d09b3331", "v0.1.0_nothing.jstore")
-                @test isfile(cache_path)
-
-                cached_version = open(SymbolServer.CacheStore.read, cache_path)
-                @test !isnothing(cached_version.sha)
-                @test cached_version.sha == SymbolServer.sha2_256_dir(joinpath(path, "A", "src"))
-
-                SymbolServer.clear_disc_store(ssi)
-                @test length(readdir(store_path)) == 0
-            end
+        jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+        withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+            run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
         end
-    end
 
-    @test SymbolServer.stdlibs[:Base][:Sort][:sort] isa SymbolServer.FunctionStore
+        ssi = SymbolServerInstance("", store_path)
+        ret_status, store = getstore(ssi, project_path; download=false)
+        @test ret_status == :success
+        @test length(store) == 4
+        @test haskey(store, :Core)
+        @test haskey(store, :Base)
+        @test haskey(store, :Main)
+        @test haskey(store, :A)
 
-    @testset "symbol documentation" begin
-        @test !isempty(SymbolServer.stdlibs[:Base][:abs].doc)          # Function
-        if VERSION >= v"1.7"
-            @test !isempty(SymbolServer.stdlibs[:Core][:Pair].doc)         # DataType
-        else
-            @test !isempty(SymbolServer.stdlibs[:Base][:Pair].doc)         # DataType
-        end
-        @test !isempty(SymbolServer.stdlibs[:Base][:Libc].doc)         # Module
-        @test !isempty(SymbolServer.stdlibs[:Base][:LinRange].doc)     # UnionAll
-        @test !isempty(SymbolServer.stdlibs[:Base][:VecOrMat].doc)     # Union
-        @test occursin("Cint", SymbolServer.stdlibs[:Base][:Cint].doc) # Alias
-    end
+        # Inspect the cached version, and check that the package SHA has been computed
+        # correctly.
+        cache_path = joinpath(store_path, "A", "A_94f385dd-073b-49fe-b7ed-f824d09b3331", "v0.1.0_nothing.jstore")
+        @test isfile(cache_path)
 
-    if VERSION >= v"1.1-"
-        @testset "Excluding private packages from cache download requests" begin
-            pkgs = Dict{Base.UUID,Pkg.Types.PackageEntry}()
-            if VERSION < v"1.3-"
-                pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")] = Pkg.Types.PackageEntry(name="Example", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
-                pkgs[UUID("3e13f8c9-a9aa-412e-8b2a-fda000b375e2")] = Pkg.Types.PackageEntry(name="NotInGeneral", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
-                pkgs[UUID("eb4ab7d2-1172-48bd-a954-ae6825f2e6e3")] = Pkg.Types.PackageEntry(other=Dict("git-tree-sha1" => Base.SHA1("0"^40))) # no name
-                pkgs[UUID("1fec9e91-426f-45f4-a317-da8b2730f864")] = Pkg.Types.PackageEntry(name="NoTreeHash") # no tree_hash, like stdlibs
-            else
-                pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")] = Pkg.Types.PackageEntry(name="Example", tree_hash=Base.SHA1("0"^40))
-                pkgs[UUID("3e13f8c9-a9aa-412e-8b2a-fda000b375e2")] = Pkg.Types.PackageEntry(name="NotInGeneral", tree_hash=Base.SHA1("1"^40))
-                pkgs[UUID("eb4ab7d2-1172-48bd-a954-ae6825f2e6e3")] = Pkg.Types.PackageEntry(tree_hash=Base.SHA1("2"^40)) # no name
-                pkgs[UUID("1fec9e91-426f-45f4-a317-da8b2730f864")] = Pkg.Types.PackageEntry(name="NoTreeHash") # no tree_hash, like stdlibs
-            end
+        cached_version = open(SymbolServer.CacheStore.read, cache_path)
+        @test !isnothing(cached_version.sha)
+        @test cached_version.sha == SymbolServer.sha2_256_dir(joinpath(path, "A", "src"))
 
-            SymbolServer.remove_non_general_pkgs!(pkgs)
-
-            @test length(pkgs) == 1
-            @test haskey(pkgs, UUID("7876af07-990d-54b4-ab0e-23690620f79a"))
-            @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].name == "Example"
-            if VERSION < v"1.3"
-                @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].other["git-tree-sha1"] == Base.SHA1("0"^40)
-            else
-                @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].tree_hash == Base.SHA1("0"^40)
-            end
-        end
+        SymbolServer.clear_disc_store(ssi)
+        @test length(readdir(store_path)) == 0
     end
 end
 
-using SymbolServer: FakeTypeName
+@testitem "Sort submodule access" begin
+    @test SymbolServer.stdlibs[:Base][:Sort][:sort] isa SymbolServer.FunctionStore
+end
 
-@testset "TypeofVararg" begin
+@testitem "symbol documentation" begin
+    @test !isempty(SymbolServer.stdlibs[:Base][:abs].doc)          # Function
+    if VERSION >= v"1.7"
+        @test !isempty(SymbolServer.stdlibs[:Core][:Pair].doc)         # DataType
+    else
+        @test !isempty(SymbolServer.stdlibs[:Base][:Pair].doc)         # DataType
+    end
+    @test !isempty(SymbolServer.stdlibs[:Base][:Libc].doc)         # Module
+    @test !isempty(SymbolServer.stdlibs[:Base][:LinRange].doc)     # UnionAll
+    @test !isempty(SymbolServer.stdlibs[:Base][:VecOrMat].doc)     # Union
+    @test occursin("Cint", SymbolServer.stdlibs[:Base][:Cint].doc) # Alias
+end
+
+@testitem "Excluding private packages from cache download" begin
+    VERSION < v"1.1-" && return
+
+    using Pkg
+    using Base: UUID
+
+    pkgs = Dict{Base.UUID,Pkg.Types.PackageEntry}()
+    if VERSION < v"1.3-"
+        pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")] = Pkg.Types.PackageEntry(name="Example", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
+        pkgs[UUID("3e13f8c9-a9aa-412e-8b2a-fda000b375e2")] = Pkg.Types.PackageEntry(name="NotInGeneral", other=Dict("git-tree-sha1" => Base.SHA1("0"^40)))
+        pkgs[UUID("eb4ab7d2-1172-48bd-a954-ae6825f2e6e3")] = Pkg.Types.PackageEntry(other=Dict("git-tree-sha1" => Base.SHA1("0"^40))) # no name
+        pkgs[UUID("1fec9e91-426f-45f4-a317-da8b2730f864")] = Pkg.Types.PackageEntry(name="NoTreeHash") # no tree_hash, like stdlibs
+    else
+        pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")] = Pkg.Types.PackageEntry(name="Example", tree_hash=Base.SHA1("0"^40))
+        pkgs[UUID("3e13f8c9-a9aa-412e-8b2a-fda000b375e2")] = Pkg.Types.PackageEntry(name="NotInGeneral", tree_hash=Base.SHA1("1"^40))
+        pkgs[UUID("eb4ab7d2-1172-48bd-a954-ae6825f2e6e3")] = Pkg.Types.PackageEntry(tree_hash=Base.SHA1("2"^40)) # no name
+        pkgs[UUID("1fec9e91-426f-45f4-a317-da8b2730f864")] = Pkg.Types.PackageEntry(name="NoTreeHash") # no tree_hash, like stdlibs
+    end
+
+    SymbolServer.remove_non_general_pkgs!(pkgs)
+
+    @test length(pkgs) == 1
+    @test haskey(pkgs, UUID("7876af07-990d-54b4-ab0e-23690620f79a"))
+    @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].name == "Example"
+    if VERSION < v"1.3"
+        @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].other["git-tree-sha1"] == Base.SHA1("0"^40)
+    else
+        @test pkgs[UUID("7876af07-990d-54b4-ab0e-23690620f79a")].tree_hash == Base.SHA1("0"^40)
+    end
+end
+
+@testitem "TypeofVararg" begin
+    using SymbolServer: FakeTypeName
+
     Ts = Any[Vararg, Vararg{Bool,3}, NTuple{N,Any} where {N}]
     isdefined(Core, :TypeofVararg) && append!(Ts, Any[Vararg{Int}, Vararg{Rational}])
 
@@ -257,8 +280,9 @@ using SymbolServer: FakeTypeName
     end
 end
 
-import UUIDs
-@testset "Pipe names" begin
+@testitem "Pipe names" begin
+    import UUIDs
+
     if Sys.iswindows()
         p = SymbolServer.pipe_name()
         @test occursin(r"^\\\\\.\\pipe\\vscjlsymserv-\w{8}-(?:\w{4}-?){3}\w{12}$", p)
@@ -289,6 +313,6 @@ import UUIDs
     end
 end
 
-@testset "Intrinsics`" begin
+@testitem "Intrinsics" begin
     @test !isempty(SymbolServer.stdlibs[:Core][:Intrinsics].vals[:llvmcall].methods)
 end
