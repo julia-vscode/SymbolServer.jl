@@ -170,12 +170,6 @@ count_successfully_cached = 0
 
 @info "There are $(length(unindexed_packageversions)) new package/version combinations that need to be indexed. We will index at most $max_n."
 
-statusdb_filename = joinpath(cache_folder, "statusdb.json")
-
-isfile(statusdb_filename) && @info "Loading existing statusdb.json..."
-
-status_db = isfile(statusdb_filename) ? JSON.parsefile(statusdb_filename) : []
-
 @info "Starting the actual indexing process..."
 
 asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
@@ -219,10 +213,6 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stderr.txt"), "w") do f
                 print(f, res.stderr)
             end
-
-            global status_db
-
-            push!(status_db, Dict("name"=>v.name, "uuid"=>string(v.uuid), "version"=>string(v.version), "treehash"=>v.treehash, "status"=>res.code==20 ? "install_error" : res.code==10 ? "load_error" : "index_error", "indexattempts"=>[Dict("juliaversion"=>string(VERSION), "stdout"=>res.stdout, "stderr"=>res.stderr)]))
         end
 
         # @info "Files to be compressed" path readdir(path, join=true) ispath(cache_path) isfile(cache_path_compressed)
@@ -244,12 +234,6 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
         (:count_failed_to_load, count_failed_to_load),
         (:count_failed_to_index, count_failed_to_index),
     ])
-end
-
-@info "Now writing statusdb.json..."
-
-open(joinpath(cache_folder, "statusdb.json"), "w") do f
-    JSON.print(f, status_db, 4)
 end
 
 @info "Indexing finished."
