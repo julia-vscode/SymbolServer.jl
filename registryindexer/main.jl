@@ -1,17 +1,18 @@
 @info "Initializing indexing process..."
 
-max_n = 1_000_000
+max_n = 5000
 max_versions = 1_000_000
+timeout_per_package = 60*20 # 20 minutes
 max_tasks = length(ARGS)>1 ? parse(Int, ARGS[2]) : 1
 
-julia_versions = [v"1.10.4"]
+julia_versions = [v"1.12.5"]
 
 using Pkg
 
 Pkg.activate(@__DIR__)
 Pkg.instantiate()
 
-using ProgressMeter, Query, JSON, UUIDs, Tar, CodecZlib
+using ProgressMeter, Query, UUIDs, Tar, CodecZlib, CancellationTokens
 
 function get_all_package_versions(;max_versions=typemax(Int))
     registry_folder_path = joinpath(homedir(), ".julia", "registries", "General")
@@ -153,19 +154,20 @@ end
 
 @info "Now computing which of the total $(length(flattened_packageversions)) package versions that exist still need to be indexed..."
 
-unindexed_packageversions = filter(collect(Iterators.take(flattened_packageversions, max_n))) do v
+unindexed_packageversions = Iterators.take(filter(flattened_packageversions) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
     cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
     return !isfile(cache_path)
-end
+end, max_n)
 
 p = Progress(min(max_n, length(unindexed_packageversions)), 1)
 
 count_failed_to_load = 0
 count_failed_to_index = 0
 count_failed_to_install = 0
+count_timeout = 0
 count_successfully_cached = 0
 
 @info "There are $(length(unindexed_packageversions)) new package/version combinations that need to be indexed. We will index at most $max_n."
@@ -180,14 +182,32 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     cache_path_compressed = joinpath(cache_path, "v$(versionwithoutplus)_$(v.treehash).tar.gz")
 
     mktempdir() do path
-        res = execute(`docker run --rm --mount type=bind,source="$path",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+        cancel_source = CancellationTokenSource(timeout_per_package)
 
-        if res.code==37 # This is our magic error code that indicates everything worked
+        token = get_token(cancel_source)
+
+        container_name = "Julia_indexing_$(uuid4())"
+
+        res = execute(`docker run --rm -d --name $container_name --mount type=bind,source="$path",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia --startup-file=no --compiled-modules=no --history-file=no SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+
+        register(token) do
+            execute(`docker stop $container_name`)
+        end
+
+        res = execute(`docker wait $container_name`)
+
+        exit_code = tryparse(Int, res.stdout)
+
+        # @info "THE EXIT CODE IS" exit_code
+
+        if exit_code==37 # This is our magic error code that indicates everything worked
             global count_successfully_cached += 1
         else
-            if res.code==10
+            if is_cancellation_requested(token)
+                global count_timeout += 1
+            elseif exit_code==10
                 global count_failed_to_load += 1
-            elseif res.code==20
+            elseif exit_code==20
                 global count_failed_to_install += 1
             else
                 global count_failed_to_index += 1
@@ -233,6 +253,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
         (:count_failed_to_install, count_failed_to_install),
         (:count_failed_to_load, count_failed_to_load),
         (:count_failed_to_index, count_failed_to_index),
+        (:count_timeout, count_timeout),
     ])
 end
 
