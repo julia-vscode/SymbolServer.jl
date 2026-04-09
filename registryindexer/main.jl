@@ -188,7 +188,7 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
 
         container_name = "Julia_indexing_$(uuid4())"
 
-        res = execute(`docker run --rm -d --name $container_name --mount type=bind,source="$path",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia --startup-file=no --compiled-modules=no --history-file=no SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
+        res = execute(`docker run --rm -d --name $container_name --mount type=bind,source="$path",target=/symcache juliavscodesymbolindexer:$(first(julia_versions)) julia --startup-file=no --compiled-modules=existing --history-file=no SymbolServer/src/indexpackage.jl $(v.name) $(v.version) $(v.uuid) $(v.treehash)`)
 
         register(token) do
             execute(`docker stop $container_name`)
