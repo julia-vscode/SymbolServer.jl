@@ -474,3 +474,63 @@ end
         @test length(readdir(store_path)) == 0
     end
 end
+
+@testitem "indexpackage.jl captures overloads" begin
+    using Pkg
+
+    mktempdir() do path
+        cp(joinpath(@__DIR__, "testenv3"), path; force=true)
+
+        project_path = joinpath(path, "proj")
+
+        store_path = joinpath(path, "store")
+        mkpath(store_path)
+
+        jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+        withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+            run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+        end
+
+        indexpkg = abspath(joinpath(@__DIR__, "..", "src", "indexpackage.jl"))
+
+        # ARGS[1..4] = name, version, uuid, treehash; ARGS[5] = store_path.
+        # treehash is "nothing" (matches the literal string the script writes
+        # into the cache filename when no tree hash is available).
+        cmd = `$jl_cmd --project=$project_path --startup-file=no $indexpkg B 0.1.0 b8d7f5ca-4a81-4f4a-b8c7-1f4a0d2b3c4e nothing $store_path`
+        proc = withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+            run(ignorestatus(cmd))
+        end
+        # The script intentionally exits 37 on success.
+        @test proc.exitcode == 37
+
+        cache_path = joinpath(store_path, "v0.1.0_nothing.jstore")
+        @test isfile(cache_path)
+
+        cached = open(SymbolServer.CacheStore.read, cache_path)
+        modstore = cached.val
+
+        @test haskey(modstore, :show)
+        show_entry = modstore[:show]
+        @test show_entry isa SymbolServer.FunctionStore
+        @test show_entry.name != show_entry.extends
+        @test show_entry.extends.name == :show
+        @test show_entry.extends.parent !== nothing
+        @test show_entry.extends.parent.name == :Base
+        @test length(show_entry.methods) >= 2
+
+        @test haskey(modstore, :length)
+        length_entry = modstore[:length]
+        @test length_entry isa SymbolServer.FunctionStore
+        @test length_entry.name != length_entry.extends
+        @test length_entry.extends.name == :length
+        @test length_entry.extends.parent !== nothing
+        @test length_entry.extends.parent.name == :Base
+        @test length(length_entry.methods) == 1
+
+        @test haskey(modstore, :myfunc)
+        myfunc_entry = modstore[:myfunc]
+        @test myfunc_entry isa SymbolServer.FunctionStore
+        @test myfunc_entry.name == myfunc_entry.extends
+        @test length(myfunc_entry.methods) == 1
+    end
+end
