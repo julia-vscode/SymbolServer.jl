@@ -173,42 +173,53 @@ function write_vector(io, x)
     end
 end
 
-function read(io, t = Base.read(io, UInt8))
+function read(io)
+    try
+        return _read(io)
+    catch err
+        if err isa EOFError
+            throw(CacheCorruptedError("unexpected end of stream"))
+        end
+        rethrow()
+    end
+end
+
+function _read(io, t = Base.read(io, UInt8))
     # There are a bunch of `yield`s in potentially expensive code paths.
     # One top-level `yield` would probably increase responsiveness in the
     # LS, but increases runtime by 3x. This seems like a good compromise.
 
     if t === VarRefHeader
-        VarRef(read(io), read(io))
+        VarRef(_read(io), _read(io))
     elseif t === NothingHeader
         nothing
     elseif t === SymbolHeader
         n = Base.read(io, Int)
         out = Vector{UInt8}(undef, n)
-        readbytes!(io, out, n)
+        read!(io, out)
         Symbol(String(out))
     elseif t === StringHeader
         yield()
         n = Base.read(io, Int)
         out = Vector{UInt8}(undef, n)
-        readbytes!(io, out, n)
+        read!(io, out)
         String(out)
     elseif t === CharHeader
         Char(Base.read(io, UInt32))
     elseif t === IntegerHeader
         Base.read(io, Int)
     elseif t === FakeTypeNameHeader
-        FakeTypeName(read(io), read_vector(io, Any))
+        FakeTypeName(_read(io), _read_vector(io, Any))
     elseif t === FakeTypeofBottomHeader
         FakeTypeofBottom()
     elseif t === FakeTypeVarHeader
-        FakeTypeVar(read(io), read(io), read(io))
+        FakeTypeVar(_read(io), _read(io), _read(io))
     elseif t === FakeUnionHeader
-        FakeUnion(read(io), read(io))
+        FakeUnion(_read(io), _read(io))
     elseif t === FakeUnionAllHeader
-        FakeUnionAll(read(io), read(io))
+        FakeUnionAll(_read(io), _read(io))
     elseif t === FakeTypeofVarargHeader
-        T, N = read(io), read(io)
+        T, N = _read(io), _read(io)
         if T === nothing
             FakeTypeofVararg()
         elseif N === nothing
@@ -220,42 +231,42 @@ function read(io, t = Base.read(io, UInt8))
         nothing
     elseif t === MethodStoreHeader
         yield()
-        name = read(io)
-        mod = read(io)
-        file = read(io)
+        name = _read(io)
+        mod = _read(io)
+        file = _read(io)
         line = Base.read(io, UInt32)
         nsig = Base.read(io, Int)
         sig = Vector{Pair{Any, Any}}(undef, nsig)
         for i in 1:nsig
-            sig[i] = read(io) => read(io)
+            sig[i] = _read(io) => _read(io)
         end
-        kws = read_vector(io, Symbol)
-        rt = read(io)
+        kws = _read_vector(io, Symbol)
+        rt = _read(io)
         MethodStore(name, mod, file, line, sig, kws, rt)
     elseif t === FunctionStoreHeader
         yield()
-        FunctionStore(read(io), read_vector(io, MethodStore), read(io), read(io), read(io))
+        FunctionStore(_read(io), _read_vector(io, MethodStore), _read(io), _read(io), _read(io))
     elseif t === DataTypeStoreHeader
         yield()
-        DataTypeStore(read(io), read(io), read_vector(io, Any), read_vector(io, Any), read_vector(io, Any), read_vector(io, MethodStore), read(io), read(io))
+        DataTypeStore(_read(io), _read(io), _read_vector(io, Any), _read_vector(io, Any), _read_vector(io, Any), _read_vector(io, MethodStore), _read(io), _read(io))
     elseif t === GenericStoreHeader
         yield()
-        GenericStore(read(io), read(io), read(io), read(io))
+        GenericStore(_read(io), _read(io), _read(io), _read(io))
     elseif t === ModuleStoreHeader
         yield()
-        name = read(io)
+        name = _read(io)
         n = Base.read(io, Int)
         vals = Dict{Symbol,Any}()
         sizehint!(vals, n)
         for _ = 1:n
-            k = read(io)
-            v = read(io)
+            k = _read(io)
+            v = _read(io)
             vals[k] = v
         end
-        doc = read(io)
-        exported = read(io)
-        exportednames = read_vector(io, Symbol)
-        used_modules = read_vector(io, Symbol)
+        doc = _read(io)
+        exported = _read(io)
+        exportednames = _read_vector(io, Symbol)
+        used_modules = _read_vector(io, Symbol)
         ModuleStore(name, vals, doc, exported, exportednames, used_modules)
     elseif t === TrueHeader
         true
@@ -263,11 +274,11 @@ function read(io, t = Base.read(io, UInt8))
         false
     elseif t === TupleHeader
         N = Base.read(io, Int)
-        ntuple(i->read(io), N)
+        ntuple(i->_read(io), N)
     elseif t === PackageHeader
         yield()
-        name = read(io)
-        val = read(io)
+        name = _read(io)
+        val = _read(io)
         uuid = Base.UUID(Base.read(io, UInt128))
         sha = Base.read(io, 32)
         Package(name, val, uuid, all(x == 0x00 for x in sha) ? nothing : sha)
@@ -276,11 +287,11 @@ function read(io, t = Base.read(io, UInt8))
     end
 end
 
-function read_vector(io, T)
+function _read_vector(io, T)
     n = Base.read(io, Int)
     v = Vector{T}(undef, n)
     for i in 1:n
-        v[i] = read(io)
+        v[i] = _read(io)
     end
     v
 end

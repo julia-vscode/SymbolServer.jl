@@ -323,3 +323,17 @@ end
     io = IOBuffer(UInt8[0xff])
     @test_throws CacheCorruptedError read(io)
 end
+
+@testitem "CacheStore rejects truncated stream" begin
+    using SymbolServer.CacheStore: CacheCorruptedError, read
+
+    # SymbolHeader (0x02) + length=100, but only 5 payload bytes
+    io = IOBuffer(vcat(UInt8[0x02], reinterpret(UInt8, [Int(100)]), UInt8[0x41, 0x41, 0x41, 0x41, 0x41]))
+    @test_throws CacheCorruptedError read(io)
+
+    # Empty stream
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[]))
+
+    # Header byte present, but length field truncated
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[0x02, 0x00, 0x00]))
+end
