@@ -15,7 +15,11 @@ current_package_treehash = ARGS[4]
 store_path = length(ARGS) >= 5 ? ARGS[5] : "/symcache"
 
 current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
-filename_with_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash.jstore"
+filename = isempty(current_package_treehash) ?
+    string(current_package_versionwithoutplus) :
+    current_package_treehash
+filename_with_extension = "$(filename).jstore"
+cache_file_path = joinpath(store_path, filename_with_extension)
 
 module LoadingBay end
 
@@ -71,7 +75,8 @@ modify_dirs(env[current_package_name], f -> modify_dir(f, pkg_src_dir(Base.loade
 # There's an issue here - @enum used within CSTParser seems to add a method that is introduced from Enums.jl...
 
 # Write them to a file
-open(joinpath(store_path, filename_with_extension), "w") do io
+mkpath(dirname(cache_file_path))
+open(cache_file_path, "w") do io
     CacheStore.write(io, Package(string(current_package_name), env[current_package_name], current_package_uuid, nothing))
 end
 

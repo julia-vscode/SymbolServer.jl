@@ -483,7 +483,7 @@ end
 function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_dir="../cache", download_dir="../downloads/", symbolcache_upstream="https://www.julia-vscode.org/symbolcache")
     paths = get_cache_path(manifest, uuid)
     name = packagename(manifest, uuid)
-    link = string(first(splitext(join([symbolcache_upstream, "store/v1/packages", paths...], '/'))), ".tar.gz")
+    link = string(first(splitext(join([symbolcache_upstream, "store/v2/packages", paths...], '/'))), ".tar.gz")
 
     dest_filepath = joinpath(cache_dir, paths...)
     dest_filepath_unavailable = string(first(splitext(dest_filepath)), ".unavailable")
@@ -680,19 +680,20 @@ function get_cache_path(manifest, uuid)
     pkg_info = frommanifest(manifest, uuid)
     ver = version(pkg_info)
     if ver === nothing
-        ver = "nothing"
         if isdefined(Pkg.Types, :is_stdlib) && Pkg.Types.is_stdlib(uuid)
             ver = VERSION
         end
     end
-    ver = replace(string(ver), '+'=>'_')
     th = tree_hash(pkg_info)
-    th = th === nothing ? "nothing" : th
 
-    [
+    filename = something(th, ver, "unknown")
+    filename = replace(string(filename), '+'=>'_')
+
+    return [
         string(uppercase(string(name)[1]))
-        string(name, "_", uuid)
-        string("v", ver, "_", th, ".jstore")
+        string(name)
+        string(uuid)
+        string(filename, ".jstore")
     ]
 end
 
