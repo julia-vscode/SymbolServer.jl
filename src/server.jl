@@ -83,7 +83,12 @@ for (pk_name, uuid) in toplevel_pkgs
                     @info "Package $pk_name ($uuid) is cached."
                 end
             catch err
-                @info "Couldn't load $pk_name ($uuid) from file, will recache."
+                if err isa CacheStore.CacheCorruptedError
+                    @info "Couldn't load $pk_name ($uuid) from corrupt cache, will recache."
+                    push!(packages_to_load, uuid)
+                else
+                    rethrow()
+                end
             end
         else
             @info "Package $pk_name ($uuid) is cached."

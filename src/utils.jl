@@ -520,10 +520,14 @@ function get_file_from_cloud(manifest, uuid, environment_path, depot_dir, cache_
         open(file, "r") do io
             CacheStore.read(io)
         end
-    catch
-        @warn "Couldn't read cache file for $name, deleting."
-        rm(file)
-        return false
+    catch err
+        if err isa CacheStore.CacheCorruptedError
+            @warn "Couldn't read cache file for $name, deleting." exception=(err, catch_backtrace())
+            rm(file)
+            return false
+        else
+            rethrow()
+        end
     end
 
     pkg_entry = Base.locate_package(Base.PkgId(uuid, name))

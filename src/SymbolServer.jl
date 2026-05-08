@@ -360,14 +360,18 @@ function load_package_from_cache_into_store!(ssi::SymbolServerInstance, uuid::UU
                 load_package_from_cache_into_store!(ssi, packageuuid(dep), environment_path, manifest, store, progress_callback, percentage)
             end
         catch err
-            Base.display_error(stderr, err, catch_backtrace())
-            @warn "Tried to load $pe_name but failed to load from disc, re-caching."
-            try
-                rm(cache_path)
-            catch err2
-                # There could have been a race condition that the file has been deleted in the meantime,
-                # we don't want to crash then.
-                err2 isa Base.IOError || rethrow(err2)
+            if err isa CacheStore.CacheCorruptedError
+                Base.display_error(stderr, err, catch_backtrace())
+                @warn "Tried to load $pe_name but failed to load from disc, re-caching."
+                try
+                    rm(cache_path)
+                catch err2
+                    # There could have been a race condition that the file has been deleted in the meantime,
+                    # we don't want to crash then.
+                    err2 isa Base.IOError || rethrow(err2)
+                end
+            else
+                rethrow()
             end
         end
     else
