@@ -28,6 +28,10 @@ const TupleHeader = 0x14
 const FakeTypeofVarargHeader = 0x15
 const UndefHeader = 0x16
 
+struct CacheCorruptedError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::CacheCorruptedError) = print(io, "CacheCorruptedError: ", e.msg)
 
 function write(io, x::VarRef)
     Base.write(io, VarRefHeader)
@@ -268,7 +272,7 @@ function read(io, t = Base.read(io, UInt8))
         sha = Base.read(io, 32)
         Package(name, val, uuid, all(x == 0x00 for x in sha) ? nothing : sha)
     else
-        error("Unknown type: $t")
+        throw(CacheCorruptedError("unknown type tag: 0x$(string(t, base=16, pad=2))"))
     end
 end
 

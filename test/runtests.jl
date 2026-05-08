@@ -316,3 +316,10 @@ end
 @testitem "Intrinsics" begin
     @test !isempty(SymbolServer.stdlibs[:Core][:Intrinsics].vals[:llvmcall].methods)
 end
+
+@testitem "CacheStore rejects unknown header" begin
+    using SymbolServer.CacheStore: CacheCorruptedError, read
+
+    io = IOBuffer(UInt8[0xff])
+    @test_throws CacheCorruptedError read(io)
+end
