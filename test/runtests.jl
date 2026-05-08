@@ -406,3 +406,71 @@ end
         @test !haskey(env[:Base], :sin)
     end
 end
+
+@testitem "testenv3 captures overloads via getstore" begin
+    using Pkg
+    using Base: UUID
+
+    mktempdir() do path
+        cp(joinpath(@__DIR__, "testenv3"), path; force=true)
+
+        project_path = joinpath(path, "proj")
+
+        store_path = joinpath(path, "store")
+        mkpath(store_path)
+
+        jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+        withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+            run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+        end
+
+        ssi = SymbolServerInstance("", store_path)
+        ret_status, store = getstore(ssi, project_path; download=false)
+
+        if ret_status == :failure
+            @info String(take!(store))
+        end
+        @test ret_status == :success
+        @test haskey(store, :B)
+
+        # Inspect the on-disk cache file directly.
+        cache_path = joinpath(store_path, "B",
+            "B_b8d7f5ca-4a81-4f4a-b8c7-1f4a0d2b3c4e",
+            "v0.1.0_nothing.jstore")
+        @test isfile(cache_path)
+
+        cached = open(SymbolServer.CacheStore.read, cache_path)
+        modstore = cached.val
+
+        # Base.show overload — the failing case the change is meant to fix.
+        @test haskey(modstore, :show)
+        show_entry = modstore[:show]
+        @test show_entry isa SymbolServer.FunctionStore
+        @test show_entry.name != show_entry.extends
+        @test show_entry.extends.name == :show
+        @test show_entry.extends.parent !== nothing
+        @test show_entry.extends.parent.name == :Base
+        @test length(show_entry.methods) >= 2
+
+        # Base.length overload — confirms generalisation beyond show.
+        @test haskey(modstore, :length)
+        length_entry = modstore[:length]
+        @test length_entry isa SymbolServer.FunctionStore
+        @test length_entry.name != length_entry.extends
+        @test length_entry.extends.name == :length
+        @test length_entry.extends.parent !== nothing
+        @test length_entry.extends.parent.name == :Base
+        @test length(length_entry.methods) == 1
+
+        # Own function — confirms existing path still works and is not
+        # incorrectly tagged as an overload.
+        @test haskey(modstore, :myfunc)
+        myfunc_entry = modstore[:myfunc]
+        @test myfunc_entry isa SymbolServer.FunctionStore
+        @test myfunc_entry.name == myfunc_entry.extends
+        @test length(myfunc_entry.methods) == 1
+
+        SymbolServer.clear_disc_store(ssi)
+        @test length(readdir(store_path)) == 0
+    end
+end
