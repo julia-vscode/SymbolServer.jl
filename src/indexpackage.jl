@@ -3,6 +3,10 @@ module SymbolServer
 using Pkg, SHA
 using Base: UUID
 
+# this is required to get parsedocs to work on Julia 1.11 and newer, since the implementation
+# moved there
+using REPL
+
 current_package_name = Symbol(ARGS[1])
 current_package_version = VersionNumber(ARGS[2])
 current_package_uuid = UUID(ARGS[3])

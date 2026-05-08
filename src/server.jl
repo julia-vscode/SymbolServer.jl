@@ -28,6 +28,10 @@ end
 using Pkg, SHA
 using Base: UUID
 
+# this is required to get parsedocs to work on Julia 1.11 and newer, since the implementation
+# moved there
+using REPL
+
 include("faketypes.jl")
 include("symbols.jl")
 include("utils.jl")
