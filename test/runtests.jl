@@ -419,3 +419,25 @@ end
     bytes = nested_bytes(100)
     SymbolServer.CacheStore.read(IOBuffer(bytes))   # no throw
 end
+
+@testitem "Corrupt cache file produces CacheCorruptedError" begin
+    using SymbolServer
+
+    mktempdir() do store_path
+        pkg_dir = joinpath(store_path, "Bogus", "Bogus_00000000-0000-0000-0000-000000000000")
+        mkpath(pkg_dir)
+        cache_path = joinpath(pkg_dir, "v0.1.0_nothing.jstore")
+        open(cache_path, "w") do io
+            Base.write(io, UInt8[0xff])    # unknown header → CacheCorruptedError
+        end
+        @test isfile(cache_path)
+
+        threw = false
+        try
+            open(SymbolServer.CacheStore.read, cache_path)
+        catch err
+            threw = err isa SymbolServer.CacheStore.CacheCorruptedError
+        end
+        @test threw
+    end
+end
