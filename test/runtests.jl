@@ -337,3 +337,24 @@ end
     # Header byte present, but length field truncated
     @test_throws CacheCorruptedError read(IOBuffer(UInt8[0x02, 0x00, 0x00]))
 end
+
+@testitem "CacheStore rejects oversized length fields" begin
+    using SymbolServer.CacheStore: CacheCorruptedError, read
+
+    # SymbolHeader (0x02) + length=10^15 in a 9-byte stream → way over remaining bytes
+    huge = Int(10)^15
+    io = IOBuffer(vcat(UInt8[0x02], reinterpret(UInt8, [huge])))
+    @test_throws CacheCorruptedError read(io)
+
+    # Negative length
+    io = IOBuffer(vcat(UInt8[0x02], reinterpret(UInt8, [Int(-1)])))
+    @test_throws CacheCorruptedError read(io)
+
+    # StringHeader with oversized length
+    io = IOBuffer(vcat(UInt8[0x05], reinterpret(UInt8, [huge])))
+    @test_throws CacheCorruptedError read(io)
+
+    # TupleHeader (0x14) with oversized length
+    io = IOBuffer(vcat(UInt8[0x14], reinterpret(UInt8, [huge])))
+    @test_throws CacheCorruptedError read(io)
+end

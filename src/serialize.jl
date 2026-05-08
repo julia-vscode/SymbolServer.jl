@@ -33,6 +33,13 @@ struct CacheCorruptedError <: Exception
 end
 Base.showerror(io::IO, e::CacheCorruptedError) = print(io, "CacheCorruptedError: ", e.msg)
 
+function _check_len(io, n)
+    n < 0 && throw(CacheCorruptedError("negative length: $n"))
+    rem = bytesavailable(io)
+    n > rem && throw(CacheCorruptedError("length $n exceeds remaining $rem bytes"))
+    return n
+end
+
 function write(io, x::VarRef)
     Base.write(io, VarRefHeader)
     write(io, x.parent)
@@ -195,12 +202,14 @@ function _read(io, t = Base.read(io, UInt8))
         nothing
     elseif t === SymbolHeader
         n = Base.read(io, Int)
+        _check_len(io, n)
         out = Vector{UInt8}(undef, n)
         read!(io, out)
         Symbol(String(out))
     elseif t === StringHeader
         yield()
         n = Base.read(io, Int)
+        _check_len(io, n)
         out = Vector{UInt8}(undef, n)
         read!(io, out)
         String(out)
@@ -236,6 +245,7 @@ function _read(io, t = Base.read(io, UInt8))
         file = _read(io)
         line = Base.read(io, UInt32)
         nsig = Base.read(io, Int)
+        _check_len(io, nsig)
         sig = Vector{Pair{Any, Any}}(undef, nsig)
         for i in 1:nsig
             sig[i] = _read(io) => _read(io)
@@ -256,6 +266,7 @@ function _read(io, t = Base.read(io, UInt8))
         yield()
         name = _read(io)
         n = Base.read(io, Int)
+        _check_len(io, n)
         vals = Dict{Symbol,Any}()
         sizehint!(vals, n)
         for _ = 1:n
@@ -274,6 +285,7 @@ function _read(io, t = Base.read(io, UInt8))
         false
     elseif t === TupleHeader
         N = Base.read(io, Int)
+        _check_len(io, N)
         ntuple(i->_read(io), N)
     elseif t === PackageHeader
         yield()
@@ -289,6 +301,7 @@ end
 
 function _read_vector(io, T)
     n = Base.read(io, Int)
+    _check_len(io, n)
     v = Vector{T}(undef, n)
     for i in 1:n
         v[i] = _read(io)
