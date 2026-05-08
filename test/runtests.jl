@@ -359,6 +359,28 @@ end
     @test_throws CacheCorruptedError read(io)
 end
 
+@testitem "CacheStore rejects cyclic data on write" begin
+    using SymbolServer.CacheStore: write
+    using SymbolServer: VarRef, FakeTypeName
+
+    name = VarRef(nothing, :A)
+    ft = FakeTypeName(name, Any[])
+    push!(ft.parameters, ft)        # cycle: ft.parameters[1] === ft
+
+    io = IOBuffer()
+    @test_throws ArgumentError write(io, ft)
+
+    # Non-cyclic but very deep also rejected
+    deep = let d = FakeTypeName(name, Any[])
+        for _ in 1:300
+            d = FakeTypeName(name, Any[d])
+        end
+        d
+    end
+    io = IOBuffer()
+    @test_throws ArgumentError write(io, deep)
+end
+
 @testitem "CacheStore rejects deeply nested input on read" begin
     using SymbolServer.CacheStore: CacheCorruptedError
 

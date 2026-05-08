@@ -42,143 +42,160 @@ end
 
 const MAX_DEPTH = 256
 
-function write(io, x::VarRef)
-    Base.write(io, VarRefHeader)
-    write(io, x.parent)
-    write(io, x.name)
+function write(io, x)
+    _write(io, x, 0)
 end
-function write(io, x::Nothing)
+
+function _write(io, x::VarRef, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
+    Base.write(io, VarRefHeader)
+    _write(io, x.parent, depth + 1)
+    _write(io, x.name, depth + 1)
+end
+function _write(io, x::Nothing, depth::Int)
     Base.write(io, NothingHeader)
 end
-function write(io, x::Char)
+function _write(io, x::Char, depth::Int)
     Base.write(io, CharHeader)
     Base.write(io, UInt32(x))
 end
-function write(io, x::Bool)
+function _write(io, x::Bool, depth::Int)
     x ? Base.write(io, TrueHeader) : Base.write(io, FalseHeader)
 end
-function write(io, x::Int)
+function _write(io, x::Int, depth::Int)
     Base.write(io, IntegerHeader)
     Base.write(io, x)
 end
-function write(io, x::Symbol)
+function _write(io, x::Symbol, depth::Int)
     Base.write(io, SymbolHeader)
     Base.write(io, sizeof(x))
     Base.write(io, String(x))
 end
-function write(io, x::NTuple{N,Any}) where N
+function _write(io, x::NTuple{N,Any}, depth::Int) where N
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, TupleHeader)
     Base.write(io, N)
     for i = 1:N
-        write(io, x[i])
+        _write(io, x[i], depth + 1)
     end
 end
-function write(io, x::String)
+function _write(io, x::String, depth::Int)
     Base.write(io, StringHeader)
     Base.write(io, sizeof(x))
     Base.write(io, x)
 end
-function write(io, x::FakeTypeName)
+function _write(io, x::FakeTypeName, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeTypeNameHeader)
-    write(io, x.name)
-    write_vector(io, x.parameters)
+    _write(io, x.name, depth + 1)
+    _write_vector(io, x.parameters, depth + 1)
 end
-write(io, x::FakeTypeofBottom) = Base.write(io, FakeTypeofBottomHeader)
-function write(io, x::FakeTypeVar)
+_write(io, x::FakeTypeofBottom, depth::Int) = Base.write(io, FakeTypeofBottomHeader)
+function _write(io, x::FakeTypeVar, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeTypeVarHeader)
-    write(io, x.name)
-    write(io, x.lb)
-    write(io, x.ub)
+    _write(io, x.name, depth + 1)
+    _write(io, x.lb, depth + 1)
+    _write(io, x.ub, depth + 1)
 end
-function write(io, x::FakeUnion)
+function _write(io, x::FakeUnion, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeUnionHeader)
-    write(io, x.a)
-    write(io, x.b)
+    _write(io, x.a, depth + 1)
+    _write(io, x.b, depth + 1)
 end
-function write(io, x::FakeUnionAll)
+function _write(io, x::FakeUnionAll, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeUnionAllHeader)
-    write(io, x.var)
-    write(io, x.body)
+    _write(io, x.var, depth + 1)
+    _write(io, x.body, depth + 1)
 end
 
 @static if !(Vararg isa Type)
-    function write(io, x::FakeTypeofVararg)
+    function _write(io, x::FakeTypeofVararg, depth::Int)
+        depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
         Base.write(io, FakeTypeofVarargHeader)
-        isdefined(x, :T) ? write(io, x.T) : Base.write(io, UndefHeader)
-        isdefined(x, :N) ? write(io, x.N) : Base.write(io, UndefHeader)
+        isdefined(x, :T) ? _write(io, x.T, depth + 1) : Base.write(io, UndefHeader)
+        isdefined(x, :N) ? _write(io, x.N, depth + 1) : Base.write(io, UndefHeader)
     end
 end
 
-function write(io, x::MethodStore)
+function _write(io, x::MethodStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, MethodStoreHeader)
-    write(io, x.name)
-    write(io, x.mod)
-    write(io, x.file)
+    _write(io, x.name, depth + 1)
+    _write(io, x.mod, depth + 1)
+    _write(io, x.file, depth + 1)
     Base.write(io, x.line)
     Base.write(io, length(x.sig))
     for p in x.sig
-        write(io, p[1])
-        write(io, p[2])
+        _write(io, p[1], depth + 1)
+        _write(io, p[2], depth + 1)
     end
-    write_vector(io, x.kws)
-    write(io, x.rt)
+    _write_vector(io, x.kws, depth + 1)
+    _write(io, x.rt, depth + 1)
 end
 
-function write(io, x::FunctionStore)
+function _write(io, x::FunctionStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FunctionStoreHeader)
-    write(io, x.name)
-    write_vector(io, x.methods)
-    write(io, x.doc)
-    write(io, x.extends)
-    write(io, x.exported)
+    _write(io, x.name, depth + 1)
+    _write_vector(io, x.methods, depth + 1)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.extends, depth + 1)
+    _write(io, x.exported, depth + 1)
 end
 
-function write(io, x::DataTypeStore)
+function _write(io, x::DataTypeStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, DataTypeStoreHeader)
-    write(io, x.name)
-    write(io, x.super)
-    write_vector(io, x.parameters)
-    write_vector(io, x.types)
-    write_vector(io, x.fieldnames)
-    write_vector(io, x.methods)
-    write(io, x.doc)
-    write(io, x.exported)
+    _write(io, x.name, depth + 1)
+    _write(io, x.super, depth + 1)
+    _write_vector(io, x.parameters, depth + 1)
+    _write_vector(io, x.types, depth + 1)
+    _write_vector(io, x.fieldnames, depth + 1)
+    _write_vector(io, x.methods, depth + 1)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.exported, depth + 1)
 end
 
-function write(io, x::GenericStore)
+function _write(io, x::GenericStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, GenericStoreHeader)
-    write(io, x.name)
-    write(io, x.typ)
-    write(io, x.doc)
-    write(io, x.exported)
+    _write(io, x.name, depth + 1)
+    _write(io, x.typ, depth + 1)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.exported, depth + 1)
 end
 
-function write(io, x::ModuleStore)
+function _write(io, x::ModuleStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, ModuleStoreHeader)
-    write(io, x.name)
+    _write(io, x.name, depth + 1)
     Base.write(io, length(x.vals))
     for p in x.vals
-        write(io, p[1])
-        write(io, p[2])
+        _write(io, p[1], depth + 1)
+        _write(io, p[2], depth + 1)
     end
-    write(io, x.doc)
-    write(io, x.exported)
-    write_vector(io, x.exportednames)
-    write_vector(io, x.used_modules)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.exported, depth + 1)
+    _write_vector(io, x.exportednames, depth + 1)
+    _write_vector(io, x.used_modules, depth + 1)
 end
 
-function write(io, x::Package)
+function _write(io, x::Package, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, PackageHeader)
-    write(io, x.name)
-    write(io, x.val)
+    _write(io, x.name, depth + 1)
+    _write(io, x.val, depth + 1)
     Base.write(io, UInt128(x.uuid))
     Base.write(io, x.sha === nothing ? zeros(UInt8, 32) : x.sha)
 end
 
-function write_vector(io, x)
+function _write_vector(io, x, depth::Int)
     Base.write(io, length(x))
     for p in x
-        write(io, p)
+        _write(io, p, depth + 1)
     end
 end
 
