@@ -28,6 +28,9 @@ const TupleHeader = 0x14
 const FakeTypeofVarargHeader = 0x15
 const UndefHeader = 0x16
 
+const MagicHeader = 0x66
+const StoreVersion = 0x01
+
 struct CacheCorruptedError <: Exception
     msg::String
 end
@@ -48,7 +51,13 @@ end
 const MAX_DEPTH = 256
 
 function write(io, x)
+    _write_header(io)
     _write(io, x, 0)
+end
+
+function _write_header(io)
+    Base.write(io, MagicHeader)
+    Base.write(io, StoreVersion)
 end
 
 function _write(io, x::VarRef, depth::Int)
@@ -220,12 +229,24 @@ end
 
 function read(io)
     try
+        _read_header(io)
         return _read(io)
     catch err
         if err isa EOFError
             throw(CacheCorruptedError("unexpected end of stream"))
         end
         rethrow()
+    end
+end
+
+function _read_header(io)
+    header = Base.read(io, UInt8)
+    if header !== MagicHeader
+        throw(CacheCorruptedError("invalid cache file (magic bytes mismatch)"))
+    end
+    version = Base.read(io, UInt8)
+    if version !== StoreVersion
+        throw(CacheCorruptedError("invalid cache file version (read $version, expected $StoreVersion)"))
     end
 end
 

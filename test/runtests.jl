@@ -535,45 +535,74 @@ end
     end
 end
 
-@testitem "CacheStore rejects unknown header" begin
-    using SymbolServer.CacheStore: CacheCorruptedError, read
+@testitem "CacheStore validates file header" begin
+    using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read, write
+    using SymbolServer: VarRef
 
-    io = IOBuffer(UInt8[0xff])
-    @test_throws CacheCorruptedError read(io)
+    # Round-trip: written stream begins with magic + version
+    io = IOBuffer()
+    write(io, VarRef(nothing, :foo))
+    bytes = take!(io)
+    @test length(bytes) >= 2
+    @test bytes[1] === MagicHeader
+    @test bytes[2] === StoreVersion
+
+    # Wrong magic byte → rejected
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[0x00, StoreVersion]))
+
+    # Right magic, wrong version → rejected
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[MagicHeader, 0xff]))
+
+    # Truncated header (only magic, no version) → rejected
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[MagicHeader]))
+end
+
+@testitem "CacheStore rejects unknown header" begin
+    using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
+
+    # Bad magic byte → rejected before tag dispatch
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[0xff]))
+
+    # Valid magic + version, but unknown record tag → rejected by dispatch
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[MagicHeader, StoreVersion, 0xff]))
 end
 
 @testitem "CacheStore rejects truncated stream" begin
-    using SymbolServer.CacheStore: CacheCorruptedError, read
+    using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
+
+    prefix = UInt8[MagicHeader, StoreVersion]
 
     # SymbolHeader (0x02) + length=100, but only 5 payload bytes
-    io = IOBuffer(vcat(UInt8[0x02], reinterpret(UInt8, [Int(100)]), UInt8[0x41, 0x41, 0x41, 0x41, 0x41]))
+    io = IOBuffer(vcat(prefix, UInt8[0x02], reinterpret(UInt8, [Int(100)]), UInt8[0x41, 0x41, 0x41, 0x41, 0x41]))
     @test_throws CacheCorruptedError read(io)
 
     # Empty stream
     @test_throws CacheCorruptedError read(IOBuffer(UInt8[]))
 
     # Header byte present, but length field truncated
-    @test_throws CacheCorruptedError read(IOBuffer(UInt8[0x02, 0x00, 0x00]))
+    @test_throws CacheCorruptedError read(IOBuffer(vcat(prefix, UInt8[0x02, 0x00, 0x00])))
 end
 
 @testitem "CacheStore rejects oversized length fields" begin
-    using SymbolServer.CacheStore: CacheCorruptedError, read
+    using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
+
+    prefix = UInt8[MagicHeader, StoreVersion]
 
     # SymbolHeader (0x02) + length=10^15 in a 9-byte stream → way over remaining bytes
     huge = Int(10)^15
-    io = IOBuffer(vcat(UInt8[0x02], reinterpret(UInt8, [huge])))
+    io = IOBuffer(vcat(prefix, UInt8[0x02], reinterpret(UInt8, [huge])))
     @test_throws CacheCorruptedError read(io)
 
     # Negative length
-    io = IOBuffer(vcat(UInt8[0x02], reinterpret(UInt8, [Int(-1)])))
+    io = IOBuffer(vcat(prefix, UInt8[0x02], reinterpret(UInt8, [Int(-1)])))
     @test_throws CacheCorruptedError read(io)
 
     # StringHeader with oversized length
-    io = IOBuffer(vcat(UInt8[0x05], reinterpret(UInt8, [huge])))
+    io = IOBuffer(vcat(prefix, UInt8[0x05], reinterpret(UInt8, [huge])))
     @test_throws CacheCorruptedError read(io)
 
     # TupleHeader (0x14) with oversized length
-    io = IOBuffer(vcat(UInt8[0x14], reinterpret(UInt8, [huge])))
+    io = IOBuffer(vcat(prefix, UInt8[0x14], reinterpret(UInt8, [huge])))
     @test_throws CacheCorruptedError read(io)
 end
 
@@ -600,7 +629,7 @@ end
 end
 
 @testitem "CacheStore rejects deeply nested input on read" begin
-    using SymbolServer.CacheStore: CacheCorruptedError
+    using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
 
     # Build a hand-crafted byte stream of nested FakeTypeName encodings.
     # Wire format per level:
@@ -629,13 +658,15 @@ end
         return bytes
     end
 
+    prefix = UInt8[MagicHeader, StoreVersion]
+
     # 300 levels exceeds MAX_DEPTH=256
     bytes = nested_bytes(300)
-    @test_throws CacheCorruptedError SymbolServer.CacheStore.read(IOBuffer(bytes))
+    @test_throws CacheCorruptedError read(IOBuffer(vcat(prefix, bytes)))
 
     # 100 levels is well under MAX_DEPTH and should succeed
     bytes = nested_bytes(100)
-    SymbolServer.CacheStore.read(IOBuffer(bytes))   # no throw
+    read(IOBuffer(vcat(prefix, bytes)))   # no throw
 end
 
 @testitem "Corrupt cache file produces CacheCorruptedError" begin
@@ -664,9 +695,11 @@ end
     # Regression: bytesavailable(::IOStream) returns the buffered chunk size, not
     # remaining file bytes. A naive remaining-bytes check spuriously rejects
     # legitimate length fields when reading real cache files from disk.
-    using SymbolServer.CacheStore: read
+    using SymbolServer.CacheStore: read, MagicHeader, StoreVersion
 
     mktemp() do path, io
+        Base.write(io, MagicHeader)
+        Base.write(io, StoreVersion)
         Base.write(io, 0x05)                    # StringHeader
         Base.write(io, Int(30))                 # length 30
         Base.write(io, repeat("a", 30))
