@@ -227,6 +227,10 @@ function _write_vector(io, x, depth::Int)
     end
 end
 
+# Reading into an IOBuffer increases performance by ~3x, because the
+# many single-byte read calls don't require a ccall then
+read(io::IOStream) = read(IOBuffer(Base.read(io)))
+
 function read(io)
     try
         _read_header(io)
