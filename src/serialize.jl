@@ -40,6 +40,8 @@ function _check_len(io, n)
     return n
 end
 
+const MAX_DEPTH = 256
+
 function write(io, x::VarRef)
     Base.write(io, VarRefHeader)
     write(io, x.parent)
@@ -191,13 +193,14 @@ function read(io)
     end
 end
 
-function _read(io, t = Base.read(io, UInt8))
+function _read(io, t = Base.read(io, UInt8), depth::Int = 0)
     # There are a bunch of `yield`s in potentially expensive code paths.
     # One top-level `yield` would probably increase responsiveness in the
     # LS, but increases runtime by 3x. This seems like a good compromise.
+    depth > MAX_DEPTH && throw(CacheCorruptedError("depth limit exceeded ($MAX_DEPTH)"))
 
     if t === VarRefHeader
-        VarRef(_read(io), _read(io))
+        VarRef(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === NothingHeader
         nothing
     elseif t === SymbolHeader
@@ -218,17 +221,17 @@ function _read(io, t = Base.read(io, UInt8))
     elseif t === IntegerHeader
         Base.read(io, Int)
     elseif t === FakeTypeNameHeader
-        FakeTypeName(_read(io), _read_vector(io, Any))
+        FakeTypeName(_read(io, Base.read(io, UInt8), depth + 1), _read_vector(io, Any, depth + 1))
     elseif t === FakeTypeofBottomHeader
         FakeTypeofBottom()
     elseif t === FakeTypeVarHeader
-        FakeTypeVar(_read(io), _read(io), _read(io))
+        FakeTypeVar(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === FakeUnionHeader
-        FakeUnion(_read(io), _read(io))
+        FakeUnion(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === FakeUnionAllHeader
-        FakeUnionAll(_read(io), _read(io))
+        FakeUnionAll(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === FakeTypeofVarargHeader
-        T, N = _read(io), _read(io)
+        T, N = _read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1)
         if T === nothing
             FakeTypeofVararg()
         elseif N === nothing
@@ -240,44 +243,64 @@ function _read(io, t = Base.read(io, UInt8))
         nothing
     elseif t === MethodStoreHeader
         yield()
-        name = _read(io)
-        mod = _read(io)
-        file = _read(io)
+        name = _read(io, Base.read(io, UInt8), depth + 1)
+        mod = _read(io, Base.read(io, UInt8), depth + 1)
+        file = _read(io, Base.read(io, UInt8), depth + 1)
         line = Base.read(io, UInt32)
         nsig = Base.read(io, Int)
         _check_len(io, nsig)
         sig = Vector{Pair{Any, Any}}(undef, nsig)
         for i in 1:nsig
-            sig[i] = _read(io) => _read(io)
+            sig[i] = _read(io, Base.read(io, UInt8), depth + 1) => _read(io, Base.read(io, UInt8), depth + 1)
         end
-        kws = _read_vector(io, Symbol)
-        rt = _read(io)
+        kws = _read_vector(io, Symbol, depth + 1)
+        rt = _read(io, Base.read(io, UInt8), depth + 1)
         MethodStore(name, mod, file, line, sig, kws, rt)
     elseif t === FunctionStoreHeader
         yield()
-        FunctionStore(_read(io), _read_vector(io, MethodStore), _read(io), _read(io), _read(io))
+        FunctionStore(
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read_vector(io, MethodStore, depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+        )
     elseif t === DataTypeStoreHeader
         yield()
-        DataTypeStore(_read(io), _read(io), _read_vector(io, Any), _read_vector(io, Any), _read_vector(io, Any), _read_vector(io, MethodStore), _read(io), _read(io))
+        DataTypeStore(
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read_vector(io, Any, depth + 1),
+            _read_vector(io, Any, depth + 1),
+            _read_vector(io, Any, depth + 1),
+            _read_vector(io, MethodStore, depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+        )
     elseif t === GenericStoreHeader
         yield()
-        GenericStore(_read(io), _read(io), _read(io), _read(io))
+        GenericStore(
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+        )
     elseif t === ModuleStoreHeader
         yield()
-        name = _read(io)
+        name = _read(io, Base.read(io, UInt8), depth + 1)
         n = Base.read(io, Int)
         _check_len(io, n)
         vals = Dict{Symbol,Any}()
         sizehint!(vals, n)
         for _ = 1:n
-            k = _read(io)
-            v = _read(io)
+            k = _read(io, Base.read(io, UInt8), depth + 1)
+            v = _read(io, Base.read(io, UInt8), depth + 1)
             vals[k] = v
         end
-        doc = _read(io)
-        exported = _read(io)
-        exportednames = _read_vector(io, Symbol)
-        used_modules = _read_vector(io, Symbol)
+        doc = _read(io, Base.read(io, UInt8), depth + 1)
+        exported = _read(io, Base.read(io, UInt8), depth + 1)
+        exportednames = _read_vector(io, Symbol, depth + 1)
+        used_modules = _read_vector(io, Symbol, depth + 1)
         ModuleStore(name, vals, doc, exported, exportednames, used_modules)
     elseif t === TrueHeader
         true
@@ -286,11 +309,11 @@ function _read(io, t = Base.read(io, UInt8))
     elseif t === TupleHeader
         N = Base.read(io, Int)
         _check_len(io, N)
-        ntuple(i->_read(io), N)
+        ntuple(i->_read(io, Base.read(io, UInt8), depth + 1), N)
     elseif t === PackageHeader
         yield()
-        name = _read(io)
-        val = _read(io)
+        name = _read(io, Base.read(io, UInt8), depth + 1)
+        val = _read(io, Base.read(io, UInt8), depth + 1)
         uuid = Base.UUID(Base.read(io, UInt128))
         sha = Base.read(io, 32)
         Package(name, val, uuid, all(x == 0x00 for x in sha) ? nothing : sha)
@@ -299,12 +322,12 @@ function _read(io, t = Base.read(io, UInt8))
     end
 end
 
-function _read_vector(io, T)
+function _read_vector(io, T, depth::Int = 0)
     n = Base.read(io, Int)
     _check_len(io, n)
     v = Vector{T}(undef, n)
     for i in 1:n
-        v[i] = _read(io)
+        v[i] = _read(io, Base.read(io, UInt8), depth + 1)
     end
     v
 end
