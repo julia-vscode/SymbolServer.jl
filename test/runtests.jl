@@ -326,3 +326,26 @@ end
     @test w > 0
     @test w < typemax(typeof(w))
 end
+
+@testitem "_samestore matches MethodStores by (file, line, sig)" begin
+    using SymbolServer: _samestore, MethodStore, FakeTypeName
+
+    sig = Pair{Any,Any}[:x => FakeTypeName(Int)]
+    a = MethodStore(:foo, :Mod, "/tmp/foo.jl", Int32(10), sig, Symbol[], FakeTypeName(Any))
+    b = MethodStore(:foo, :Mod, "/tmp/foo.jl", Int32(10), sig, Symbol[], FakeTypeName(Any))
+    c = MethodStore(:foo, :Mod, "/tmp/foo.jl", Int32(11), sig, Symbol[], FakeTypeName(Any))
+    d = MethodStore(:foo, :Mod, "/tmp/other.jl", Int32(10), sig, Symbol[], FakeTypeName(Any))
+    e = MethodStore(:foo, :Mod, "/tmp/foo.jl", Int32(10),
+                    Pair{Any,Any}[:x => FakeTypeName(Float64)],
+                    Symbol[], FakeTypeName(Any))
+
+    @test _samestore(a, b)
+    @test !_samestore(a, c)
+    @test !_samestore(a, d)
+    @test !_samestore(a, e)
+
+    f = MethodStore(:bar, :Mod, "/tmp/foo.jl", Int32(10), sig, Symbol[], FakeTypeName(Any))
+    g = MethodStore(:foo, :OtherMod, "/tmp/foo.jl", Int32(10), sig, Symbol[], FakeTypeName(Any))
+    @test _samestore(a, f)   # different name — same location/sig — still matches
+    @test _samestore(a, g)   # different mod  — same location/sig — still matches
+end

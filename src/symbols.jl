@@ -51,6 +51,9 @@ function Base.show(io::IO, ms::MethodStore)
     print(io, ") at ", ms.file, ":", ms.line, )
 end
 
+_samestore(a::MethodStore, b::MethodStore) =
+    a.file == b.file && a.line == b.line && a.sig == b.sig
+
 struct DataTypeStore <: SymStore
     name::FakeTypeName
     super::FakeTypeName
@@ -269,7 +272,7 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
         elseif !(modstore[name] isa DataTypeStore || modstore[name] isa FunctionStore)
             modstore[name] = FunctionStore(VarRef(mvr, name), MethodStore[m[2]], "", func_vr, false)
         else
-            if !(m[2] in modstore[name].methods)
+            if !any(existing -> _samestore(existing, m[2]), modstore[name].methods)
                 push!(modstore[name].methods, m[2])
             end
         end
