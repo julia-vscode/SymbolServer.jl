@@ -441,3 +441,20 @@ end
         @test threw
     end
 end
+
+@testitem "Length validation accepts valid lengths over IOStream buffer chunk" begin
+    # Regression: bytesavailable(::IOStream) returns the buffered chunk size, not
+    # remaining file bytes. A naive remaining-bytes check spuriously rejects
+    # legitimate length fields when reading real cache files from disk.
+    using SymbolServer.CacheStore: read
+
+    mktemp() do path, io
+        Base.write(io, 0x05)                    # StringHeader
+        Base.write(io, Int(30))                 # length 30
+        Base.write(io, repeat("a", 30))
+        close(io)
+
+        s = open(read, path)
+        @test s == repeat("a", 30)
+    end
+end

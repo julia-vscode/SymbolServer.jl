@@ -33,9 +33,14 @@ struct CacheCorruptedError <: Exception
 end
 Base.showerror(io::IO, e::CacheCorruptedError) = print(io, "CacheCorruptedError: ", e.msg)
 
+# bytesavailable(::IOStream) returns the buffered chunk size, not remaining file
+# bytes — for files we need filesize - position. IOBuffer's bytesavailable is exact.
+_remaining(io::IOStream) = Int(filesize(io)) - Int(position(io))
+_remaining(io::IO) = bytesavailable(io)
+
 function _check_len(io, n)
     n < 0 && throw(CacheCorruptedError("negative length: $n"))
-    rem = bytesavailable(io)
+    rem = _remaining(io)
     n > rem && throw(CacheCorruptedError("length $n exceeds remaining $rem bytes"))
     return n
 end
