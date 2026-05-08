@@ -99,6 +99,13 @@ for (pk_name, uuid) in toplevel_pkgs
     end
 end
 
+# World stamp taken before any user package is loaded. method_world(m) on
+# any Method added during the loading loop will be > world_before, which
+# is how cache_new_methods! (called below) discovers overloads of
+# functions defined elsewhere — including overloads of Base/Core
+# functions added by user packages.
+world_before = Base.get_world_counter()
+
 # Load all packages together
 # This is important, or methods added to functions in other packages that are loaded earlier would not be in the cache
 for (i, uuid) in enumerate(packages_to_load)
@@ -122,6 +129,14 @@ for (pid, m) in Base.loaded_modules
 end
 
 symbols(env_symbols, nothing, getallns(), visited)
+
+# Pick up overloads of functions defined elsewhere (e.g. Base.show) that
+# user packages added without importing the name. The `min_world` filter
+# inside cache_methods (driven from world_before above) ensures we only
+# attribute methods that were added during the package-loading loop, so
+# pre-existing methods on env entries we kept (like :Base when its cache
+# wasn't already on disk) are not duplicated.
+cache_new_methods!(env_symbols, world_before; get_return_type=false)
 
 # Wrap the `ModuleStore`s as `Package`s.
 for (pkg_name, cache) in env_symbols
