@@ -55,7 +55,7 @@ world_before = Base.get_world_counter()
 # Load package
 m = try
     LoadingBay.eval(:(import $current_package_name))
-    getfield(LoadingBay, current_package_name)
+    Base.invokelatest(getfield, LoadingBay, current_package_name)
 catch e
     @info "Could not load package, exiting."
     exit(10)
