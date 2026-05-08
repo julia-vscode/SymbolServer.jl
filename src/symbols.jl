@@ -200,7 +200,7 @@ function sparam_syms(meth::Method)
     return s
 end
 
-function cache_methods(@nospecialize(f), name, env, get_return_type)
+function cache_methods(@nospecialize(f), name, env, get_return_type; min_world::UInt = UInt(0))
     if isa(f, Core.Builtin)
         return MethodStore[]
     end
@@ -216,6 +216,9 @@ function cache_methods(@nospecialize(f), name, env, get_return_type)
     ind_of_method_w_kws = Int[] # stores the index of methods with kws.
     i = 1
     for m in methods0
+        if method_world(m[3]) <= min_world
+            continue
+        end
         # Get inferred method return type
         if get_return_type
             sparams = Core.svec(sparam_syms(m[3])...)
@@ -383,6 +386,29 @@ function allmethods()
         return state
     end)
     return ms
+end
+
+"""
+    cache_new_methods!(env, world_before; get_return_type=false)
+
+For every function-thing with at least one method whose `method_world` is
+newer than `world_before`, call `cache_methods(f, name, env, get_return_type;
+min_world=world_before)`. The `min_world` filter inside `cache_methods`
+skips pre-existing methods, and the existing `_lookup(VarRef(m[1]), env)`
+filter skips methods whose defining module is not represented in `env`.
+The caller controls attribution by choosing what `env` contains.
+"""
+function cache_new_methods!(env, world_before::UInt; get_return_type = false)
+    for f in allthingswithmethods()
+        any(m -> method_world(m) > world_before, methodlist(f)) || continue
+
+        name = try
+            nameof(f)
+        catch
+            continue                          # callable types, anonymous funcs — skip
+        end
+        cache_methods(f, name, env, get_return_type; min_world = world_before)
+    end
 end
 
 usedby(outer, inner) = outer !== inner && isdefined(outer, nameof(inner)) && getproperty(outer, nameof(inner)) === inner && all(isdefined(outer, name) || !isdefined(inner, name) for name in unsorted_names(inner))

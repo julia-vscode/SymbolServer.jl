@@ -349,3 +349,60 @@ end
     @test _samestore(a, f)   # different name — same location/sig — still matches
     @test _samestore(a, g)   # different mod  — same location/sig — still matches
 end
+
+@testitem "cache_new_methods! captures overloads via world age" begin
+    using SymbolServer: cache_new_methods!, EnvStore, ModuleStore, VarRef, FunctionStore
+
+    # Fresh top-level module so its VarRef has parent === nothing,
+    # which keeps the env construction below trivially correct.
+    fakemod = Module(:_TestPkgWorldDiff)
+    Core.eval(fakemod, :(struct T end))
+
+    w = Base.get_world_counter()
+
+    # Define a Base.length method in fakemod *after* the world stamp.
+    Core.eval(fakemod, :(Base.length(::T) = 0))
+
+    # Build a minimal env containing only fakemod, mirroring what
+    # indexpackage.jl produces via getenvtree([current_package_name]).
+    env = EnvStore()
+    name = nameof(fakemod)
+    env[name] = ModuleStore(VarRef(fakemod), Dict{Symbol,Any}(),
+                            "", true, Symbol[], Symbol[])
+
+    cache_new_methods!(env, w; get_return_type=false)
+
+    @test haskey(env[name], :length)
+    entry = env[name][:length]
+    @test entry isa FunctionStore
+    @test entry.name != entry.extends                # this is an overload
+    @test entry.extends.name == :length
+    @test entry.extends.parent !== nothing
+    @test entry.extends.parent.name == :Base
+    @test length(entry.methods) == 1                 # only fakemod's overload
+end
+
+@testitem "cache_methods min_world filter skips pre-existing methods" begin
+    using SymbolServer: cache_methods, EnvStore, ModuleStore, VarRef,
+                        FunctionStore, method_world
+
+    # Env that DOES contain :Base, mimicking the server.jl case where
+    # Base's stdlib cache wasn't on disk and the entry survived the
+    # visited/delete pass.
+    env = EnvStore()
+    env[:Base] = ModuleStore(VarRef(Base), Dict{Symbol,Any}(),
+                             "", true, Symbol[], Symbol[])
+
+    # Stamp picked AFTER all current methods of `sin` have been added.
+    w_after_all = maximum(method_world(m) for m in methods(sin))
+
+    cache_methods(sin, :sin, env, false; min_world = w_after_all)
+
+    # No method satisfies world > min_world, so nothing should have been
+    # added to env[:Base][:sin].
+    if haskey(env[:Base], :sin)
+        @test isempty(env[:Base][:sin].methods)
+    else
+        @test !haskey(env[:Base], :sin)
+    end
+end
