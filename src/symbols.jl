@@ -164,6 +164,11 @@ _default_world_age() =
         typemax(UInt)
     end
 
+const _METHOD_WORLD_FIELD =
+    :primary_world in fieldnames(Method) ? :primary_world : :min_world
+
+method_world(m::Method) = getfield(m, _METHOD_WORLD_FIELD)
+
 const _global_method_cache = IdDict{Any,Vector{Any}}()
 function methodinfo(@nospecialize(f); types = Tuple, world = _default_world_age())
     key = (f, types, world)

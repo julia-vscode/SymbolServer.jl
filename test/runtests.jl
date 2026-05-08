@@ -316,3 +316,13 @@ end
 @testitem "Intrinsics" begin
     @test !isempty(SymbolServer.stdlibs[:Core][:Intrinsics].vals[:llvmcall].methods)
 end
+
+@testitem "method_world reads the right field" begin
+    using SymbolServer: method_world
+
+    m = first(methods(sin))
+    w = method_world(m)
+    @test w isa Unsigned
+    @test w > 0
+    @test w < typemax(typeof(w))
+end
