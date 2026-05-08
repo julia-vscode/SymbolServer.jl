@@ -14,19 +14,30 @@ current_package_treehash = ARGS[4]
 
 @info "Indexing package $current_package_name $current_package_version..."
 
-# This path will always be mounted in the docker container in which we are running
-store_path = "/symcache"
+# /symcache is the historical Docker mount point used by the registry
+# indexer; tests pass an explicit store_path as ARGS[5].
+store_path = length(ARGS) >= 5 ? ARGS[5] : "/symcache"
 
 current_package_versionwithoutplus = replace(string(current_package_version), '+'=>'_')
 filename_with_extension = "v$(current_package_versionwithoutplus)_$current_package_treehash.jstore"
 
 module LoadingBay end
 
-try
-    Pkg.add(name=string(current_package_name), version=current_package_version)
-catch err
-    @info "Could not install package, exiting"
-    exit(20)
+# When invoked from tests, the package is already dev-deped in the active
+# project; skip the registry round-trip in that case.
+already_loadable = try
+    Base.identify_package(string(current_package_name)) !== nothing
+catch
+    false
+end
+
+if !already_loadable
+    try
+        Pkg.add(name=string(current_package_name), version=current_package_version)
+    catch err
+        @info "Could not install package, exiting"
+        exit(20)
+    end
 end
 
 # TODO Make the code below ONLY write a cache file for the package we just added here.
@@ -35,6 +46,11 @@ include("symbols.jl")
 include("utils.jl")
 include("serialize.jl")
 using .CacheStore
+
+# World stamp taken before the package itself loads. method_world(m) on any
+# Method added during the import will be > world_before, which is how
+# cache_new_methods! discovers overloads of functions defined elsewhere.
+world_before = Base.get_world_counter()
 
 # Load package
 m = try
@@ -49,7 +65,11 @@ end
 env = getenvtree([current_package_name])
 symbols(env, m, get_return_type=true)
 
- # Strip out paths
+# Pick up overloads of functions defined elsewhere (e.g. Base.show) that
+# the package added without importing the name into its own module.
+cache_new_methods!(env, world_before; get_return_type=true)
+
+# Strip out paths
 modify_dirs(env[current_package_name], f -> modify_dir(f, pkg_src_dir(Base.loaded_modules[Base.PkgId(current_package_uuid, string(current_package_name))]), "PLACEHOLDER"))
 
 # There's an issue here - @enum used within CSTParser seems to add a method that is introduced from Enums.jl...

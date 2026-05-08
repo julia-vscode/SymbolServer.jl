@@ -28,183 +28,232 @@ const TupleHeader = 0x14
 const FakeTypeofVarargHeader = 0x15
 const UndefHeader = 0x16
 
-
-function write(io, x::VarRef)
-    Base.write(io, VarRefHeader)
-    write(io, x.parent)
-    write(io, x.name)
+struct CacheCorruptedError <: Exception
+    msg::String
 end
-function write(io, x::Nothing)
+Base.showerror(io::IO, e::CacheCorruptedError) = print(io, "CacheCorruptedError: ", e.msg)
+
+# bytesavailable(::IOStream) returns the buffered chunk size, not remaining file
+# bytes — for files we need filesize - position. IOBuffer's bytesavailable is exact.
+_remaining(io::IOStream) = Int(filesize(io)) - Int(position(io))
+_remaining(io::IO) = bytesavailable(io)
+
+function _check_len(io, n)
+    n < 0 && throw(CacheCorruptedError("negative length: $n"))
+    rem = _remaining(io)
+    n > rem && throw(CacheCorruptedError("length $n exceeds remaining $rem bytes"))
+    return n
+end
+
+const MAX_DEPTH = 256
+
+function write(io, x)
+    _write(io, x, 0)
+end
+
+function _write(io, x::VarRef, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
+    Base.write(io, VarRefHeader)
+    _write(io, x.parent, depth + 1)
+    _write(io, x.name, depth + 1)
+end
+function _write(io, x::Nothing, depth::Int)
     Base.write(io, NothingHeader)
 end
-function write(io, x::Char)
+function _write(io, x::Char, depth::Int)
     Base.write(io, CharHeader)
     Base.write(io, UInt32(x))
 end
-function write(io, x::Bool)
+function _write(io, x::Bool, depth::Int)
     x ? Base.write(io, TrueHeader) : Base.write(io, FalseHeader)
 end
-function write(io, x::Int)
+function _write(io, x::Int, depth::Int)
     Base.write(io, IntegerHeader)
     Base.write(io, x)
 end
-function write(io, x::Symbol)
+function _write(io, x::Symbol, depth::Int)
     Base.write(io, SymbolHeader)
     Base.write(io, sizeof(x))
     Base.write(io, String(x))
 end
-function write(io, x::NTuple{N,Any}) where N
+function _write(io, x::NTuple{N,Any}, depth::Int) where N
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, TupleHeader)
     Base.write(io, N)
     for i = 1:N
-        write(io, x[i])
+        _write(io, x[i], depth + 1)
     end
 end
-function write(io, x::String)
+function _write(io, x::String, depth::Int)
     Base.write(io, StringHeader)
     Base.write(io, sizeof(x))
     Base.write(io, x)
 end
-function write(io, x::FakeTypeName)
+function _write(io, x::FakeTypeName, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeTypeNameHeader)
-    write(io, x.name)
-    write_vector(io, x.parameters)
+    _write(io, x.name, depth + 1)
+    _write_vector(io, x.parameters, depth + 1)
 end
-write(io, x::FakeTypeofBottom) = Base.write(io, FakeTypeofBottomHeader)
-function write(io, x::FakeTypeVar)
+_write(io, x::FakeTypeofBottom, depth::Int) = Base.write(io, FakeTypeofBottomHeader)
+function _write(io, x::FakeTypeVar, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeTypeVarHeader)
-    write(io, x.name)
-    write(io, x.lb)
-    write(io, x.ub)
+    _write(io, x.name, depth + 1)
+    _write(io, x.lb, depth + 1)
+    _write(io, x.ub, depth + 1)
 end
-function write(io, x::FakeUnion)
+function _write(io, x::FakeUnion, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeUnionHeader)
-    write(io, x.a)
-    write(io, x.b)
+    _write(io, x.a, depth + 1)
+    _write(io, x.b, depth + 1)
 end
-function write(io, x::FakeUnionAll)
+function _write(io, x::FakeUnionAll, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FakeUnionAllHeader)
-    write(io, x.var)
-    write(io, x.body)
+    _write(io, x.var, depth + 1)
+    _write(io, x.body, depth + 1)
 end
 
 @static if !(Vararg isa Type)
-    function write(io, x::FakeTypeofVararg)
+    function _write(io, x::FakeTypeofVararg, depth::Int)
+        depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
         Base.write(io, FakeTypeofVarargHeader)
-        isdefined(x, :T) ? write(io, x.T) : Base.write(io, UndefHeader)
-        isdefined(x, :N) ? write(io, x.N) : Base.write(io, UndefHeader)
+        isdefined(x, :T) ? _write(io, x.T, depth + 1) : Base.write(io, UndefHeader)
+        isdefined(x, :N) ? _write(io, x.N, depth + 1) : Base.write(io, UndefHeader)
     end
 end
 
-function write(io, x::MethodStore)
+function _write(io, x::MethodStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, MethodStoreHeader)
-    write(io, x.name)
-    write(io, x.mod)
-    write(io, x.file)
+    _write(io, x.name, depth + 1)
+    _write(io, x.mod, depth + 1)
+    _write(io, x.file, depth + 1)
     Base.write(io, x.line)
     Base.write(io, length(x.sig))
     for p in x.sig
-        write(io, p[1])
-        write(io, p[2])
+        _write(io, p[1], depth + 1)
+        _write(io, p[2], depth + 1)
     end
-    write_vector(io, x.kws)
-    write(io, x.rt)
+    _write_vector(io, x.kws, depth + 1)
+    _write(io, x.rt, depth + 1)
 end
 
-function write(io, x::FunctionStore)
+function _write(io, x::FunctionStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, FunctionStoreHeader)
-    write(io, x.name)
-    write_vector(io, x.methods)
-    write(io, x.doc)
-    write(io, x.extends)
-    write(io, x.exported)
+    _write(io, x.name, depth + 1)
+    _write_vector(io, x.methods, depth + 1)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.extends, depth + 1)
+    _write(io, x.exported, depth + 1)
 end
 
-function write(io, x::DataTypeStore)
+function _write(io, x::DataTypeStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, DataTypeStoreHeader)
-    write(io, x.name)
-    write(io, x.super)
-    write_vector(io, x.parameters)
-    write_vector(io, x.types)
-    write_vector(io, x.fieldnames)
-    write_vector(io, x.methods)
-    write(io, x.doc)
-    write(io, x.exported)
+    _write(io, x.name, depth + 1)
+    _write(io, x.super, depth + 1)
+    _write_vector(io, x.parameters, depth + 1)
+    _write_vector(io, x.types, depth + 1)
+    _write_vector(io, x.fieldnames, depth + 1)
+    _write_vector(io, x.methods, depth + 1)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.exported, depth + 1)
 end
 
-function write(io, x::GenericStore)
+function _write(io, x::GenericStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, GenericStoreHeader)
-    write(io, x.name)
-    write(io, x.typ)
-    write(io, x.doc)
-    write(io, x.exported)
+    _write(io, x.name, depth + 1)
+    _write(io, x.typ, depth + 1)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.exported, depth + 1)
 end
 
-function write(io, x::ModuleStore)
+function _write(io, x::ModuleStore, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, ModuleStoreHeader)
-    write(io, x.name)
+    _write(io, x.name, depth + 1)
     Base.write(io, length(x.vals))
     for p in x.vals
-        write(io, p[1])
-        write(io, p[2])
+        _write(io, p[1], depth + 1)
+        _write(io, p[2], depth + 1)
     end
-    write(io, x.doc)
-    write(io, x.exported)
-    write_vector(io, x.exportednames)
-    write_vector(io, x.used_modules)
+    _write(io, x.doc, depth + 1)
+    _write(io, x.exported, depth + 1)
+    _write_vector(io, x.exportednames, depth + 1)
+    _write_vector(io, x.used_modules, depth + 1)
 end
 
-function write(io, x::Package)
+function _write(io, x::Package, depth::Int)
+    depth > MAX_DEPTH && throw(ArgumentError("serialization depth limit exceeded — possible cycle in $(typeof(x))"))
     Base.write(io, PackageHeader)
-    write(io, x.name)
-    write(io, x.val)
+    _write(io, x.name, depth + 1)
+    _write(io, x.val, depth + 1)
     Base.write(io, UInt128(x.uuid))
     Base.write(io, x.sha === nothing ? zeros(UInt8, 32) : x.sha)
 end
 
-function write_vector(io, x)
+function _write_vector(io, x, depth::Int)
     Base.write(io, length(x))
     for p in x
-        write(io, p)
+        _write(io, p, depth + 1)
     end
 end
 
-function read(io, t = Base.read(io, UInt8))
+function read(io)
+    try
+        return _read(io)
+    catch err
+        if err isa EOFError
+            throw(CacheCorruptedError("unexpected end of stream"))
+        end
+        rethrow()
+    end
+end
+
+function _read(io, t = Base.read(io, UInt8), depth::Int = 0)
     # There are a bunch of `yield`s in potentially expensive code paths.
     # One top-level `yield` would probably increase responsiveness in the
     # LS, but increases runtime by 3x. This seems like a good compromise.
+    depth > MAX_DEPTH && throw(CacheCorruptedError("depth limit exceeded ($MAX_DEPTH)"))
 
     if t === VarRefHeader
-        VarRef(read(io), read(io))
+        VarRef(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === NothingHeader
         nothing
     elseif t === SymbolHeader
         n = Base.read(io, Int)
+        _check_len(io, n)
         out = Vector{UInt8}(undef, n)
-        readbytes!(io, out, n)
+        read!(io, out)
         Symbol(String(out))
     elseif t === StringHeader
         yield()
         n = Base.read(io, Int)
+        _check_len(io, n)
         out = Vector{UInt8}(undef, n)
-        readbytes!(io, out, n)
+        read!(io, out)
         String(out)
     elseif t === CharHeader
         Char(Base.read(io, UInt32))
     elseif t === IntegerHeader
         Base.read(io, Int)
     elseif t === FakeTypeNameHeader
-        FakeTypeName(read(io), read_vector(io, Any))
+        FakeTypeName(_read(io, Base.read(io, UInt8), depth + 1), _read_vector(io, Any, depth + 1))
     elseif t === FakeTypeofBottomHeader
         FakeTypeofBottom()
     elseif t === FakeTypeVarHeader
-        FakeTypeVar(read(io), read(io), read(io))
+        FakeTypeVar(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === FakeUnionHeader
-        FakeUnion(read(io), read(io))
+        FakeUnion(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === FakeUnionAllHeader
-        FakeUnionAll(read(io), read(io))
+        FakeUnionAll(_read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1))
     elseif t === FakeTypeofVarargHeader
-        T, N = read(io), read(io)
+        T, N = _read(io, Base.read(io, UInt8), depth + 1), _read(io, Base.read(io, UInt8), depth + 1)
         if T === nothing
             FakeTypeofVararg()
         elseif N === nothing
@@ -216,42 +265,64 @@ function read(io, t = Base.read(io, UInt8))
         nothing
     elseif t === MethodStoreHeader
         yield()
-        name = read(io)
-        mod = read(io)
-        file = read(io)
+        name = _read(io, Base.read(io, UInt8), depth + 1)
+        mod = _read(io, Base.read(io, UInt8), depth + 1)
+        file = _read(io, Base.read(io, UInt8), depth + 1)
         line = Base.read(io, UInt32)
         nsig = Base.read(io, Int)
+        _check_len(io, nsig)
         sig = Vector{Pair{Any, Any}}(undef, nsig)
         for i in 1:nsig
-            sig[i] = read(io) => read(io)
+            sig[i] = _read(io, Base.read(io, UInt8), depth + 1) => _read(io, Base.read(io, UInt8), depth + 1)
         end
-        kws = read_vector(io, Symbol)
-        rt = read(io)
+        kws = _read_vector(io, Symbol, depth + 1)
+        rt = _read(io, Base.read(io, UInt8), depth + 1)
         MethodStore(name, mod, file, line, sig, kws, rt)
     elseif t === FunctionStoreHeader
         yield()
-        FunctionStore(read(io), read_vector(io, MethodStore), read(io), read(io), read(io))
+        FunctionStore(
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read_vector(io, MethodStore, depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+        )
     elseif t === DataTypeStoreHeader
         yield()
-        DataTypeStore(read(io), read(io), read_vector(io, Any), read_vector(io, Any), read_vector(io, Any), read_vector(io, MethodStore), read(io), read(io))
+        DataTypeStore(
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read_vector(io, Any, depth + 1),
+            _read_vector(io, Any, depth + 1),
+            _read_vector(io, Any, depth + 1),
+            _read_vector(io, MethodStore, depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+        )
     elseif t === GenericStoreHeader
         yield()
-        GenericStore(read(io), read(io), read(io), read(io))
+        GenericStore(
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+            _read(io, Base.read(io, UInt8), depth + 1),
+        )
     elseif t === ModuleStoreHeader
         yield()
-        name = read(io)
+        name = _read(io, Base.read(io, UInt8), depth + 1)
         n = Base.read(io, Int)
+        _check_len(io, n)
         vals = Dict{Symbol,Any}()
         sizehint!(vals, n)
         for _ = 1:n
-            k = read(io)
-            v = read(io)
+            k = _read(io, Base.read(io, UInt8), depth + 1)
+            v = _read(io, Base.read(io, UInt8), depth + 1)
             vals[k] = v
         end
-        doc = read(io)
-        exported = read(io)
-        exportednames = read_vector(io, Symbol)
-        used_modules = read_vector(io, Symbol)
+        doc = _read(io, Base.read(io, UInt8), depth + 1)
+        exported = _read(io, Base.read(io, UInt8), depth + 1)
+        exportednames = _read_vector(io, Symbol, depth + 1)
+        used_modules = _read_vector(io, Symbol, depth + 1)
         ModuleStore(name, vals, doc, exported, exportednames, used_modules)
     elseif t === TrueHeader
         true
@@ -259,24 +330,26 @@ function read(io, t = Base.read(io, UInt8))
         false
     elseif t === TupleHeader
         N = Base.read(io, Int)
-        ntuple(i->read(io), N)
+        _check_len(io, N)
+        ntuple(i->_read(io, Base.read(io, UInt8), depth + 1), N)
     elseif t === PackageHeader
         yield()
-        name = read(io)
-        val = read(io)
+        name = _read(io, Base.read(io, UInt8), depth + 1)
+        val = _read(io, Base.read(io, UInt8), depth + 1)
         uuid = Base.UUID(Base.read(io, UInt128))
         sha = Base.read(io, 32)
         Package(name, val, uuid, all(x == 0x00 for x in sha) ? nothing : sha)
     else
-        error("Unknown type: $t")
+        throw(CacheCorruptedError("unknown type tag: 0x$(string(t, base=16, pad=2))"))
     end
 end
 
-function read_vector(io, T)
+function _read_vector(io, T, depth::Int = 0)
     n = Base.read(io, Int)
+    _check_len(io, n)
     v = Vector{T}(undef, n)
     for i in 1:n
-        v[i] = read(io)
+        v[i] = _read(io, Base.read(io, UInt8), depth + 1)
     end
     v
 end
