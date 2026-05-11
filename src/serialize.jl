@@ -31,7 +31,7 @@ const UndefHeader = 0x16
 # reserve 0x00-0xfe for type headers and indicate that this file is binary by not starting
 # with ASCII
 const MagicHeader = b"\xffjstore"
-const StoreVersion = b"\x00\x01"
+const StoreVersion = b"\x00\x02"
 
 struct CacheCorruptedError <: Exception
     msg::String
