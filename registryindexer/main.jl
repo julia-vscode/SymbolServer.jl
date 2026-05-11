@@ -28,7 +28,7 @@ function get_all_package_versions(;max_versions=typemax(Int))
         }) |>
         @mutate(
             versions = (Pkg.TOML.parsefile(joinpath(registry_folder_path, _.path, "Versions.toml")) |>
-                @map(i->{version=VersionNumber(i[1]), treehash=i[2]["git-tree-sha1"]}) |> 
+                @map(i->{version=VersionNumber(i[1]), treehash=i[2]["git-tree-sha1"]}) |>
                 @orderby_descending(i->i.version) |>
                 @take(max_versions) |>
                 collect)
@@ -120,9 +120,9 @@ true || asyncmap(julia_versions) do v
             #     error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
 
             #     # Write them to a file
-            #     open(joinpath(path, error_filename), "w") do io                    
+            #     open(joinpath(path, error_filename), "w") do io
             #     end
-            
+
             #     Pkg.PlatformEngines.package(path, cache_path)
             # end
 
@@ -157,7 +157,7 @@ end
 unindexed_packageversions = Iterators.take(filter(flattened_packageversions) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
-    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)", "v$(versionwithoutplus)_$(v.treehash).tar.gz")
+    cache_path = joinpath(cache_folder, "v2", "packages", string(uppercase(v.name[1])), v.name, string(v.uuid), "$(v.treehash).tar.gz")
 
     return !isfile(cache_path)
 end, max_n)
@@ -177,9 +177,9 @@ count_successfully_cached = 0
 asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
     versionwithoutplus = replace(string(v.version), '+'=>'_')
 
-    cache_path = joinpath(cache_folder, "v1", "packages", string(uppercase(v.name[1])), "$(v.name)_$(v.uuid)")
+    cache_path = joinpath(cache_folder, "v2", "packages", string(uppercase(v.name[1])), v.name, string(v.uuid))
     mkpath(cache_path)
-    cache_path_compressed = joinpath(cache_path, "v$(versionwithoutplus)_$(v.treehash).tar.gz")
+    cache_path_compressed = joinpath(cache_path, "$(v.treehash).tar.gz")
 
     mktempdir() do path
         cancel_source = CancellationTokenSource(timeout_per_package)
@@ -218,12 +218,12 @@ asyncmap(unindexed_packageversions, ntasks=max_tasks) do v
             # @info res.stdout
             # @info res.stderr
 
-            error_filename = "v$(versionwithoutplus)_$(v.treehash).unavailable"
+            error_filename = "$(v.treehash).unavailable"
 
             isfile(joinpath(path, error_filename)) && rm(joinpath(path, error_filename))
 
             # Write them to a file
-            open(joinpath(path, error_filename), "w") do io                    
+            open(joinpath(path, error_filename), "w") do io
             end
 
             open(joinpath(cache_folder, "logs", res.code==10 ? "packageloadfailure" : res.code==20 ? "packageinstallfailure" : "packageindexfailure", "log_$(v.name)_v$(versionwithoutplus)_stdout.txt"), "w") do f
