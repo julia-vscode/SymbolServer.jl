@@ -28,8 +28,8 @@ const TupleHeader = 0x14
 const FakeTypeofVarargHeader = 0x15
 const UndefHeader = 0x16
 
-const MagicHeader = 0x66
-const StoreVersion = 0x01
+const MagicHeader = b"jstore\0"
+const StoreVersion = b"\x00\x01"
 
 struct CacheCorruptedError <: Exception
     msg::String
@@ -244,13 +244,13 @@ function read(io)
 end
 
 function _read_header(io)
-    header = Base.read(io, UInt8)
-    if header !== MagicHeader
+    header = Base.read(io, length(MagicHeader))
+    if header != MagicHeader
         throw(CacheCorruptedError("invalid cache file (magic bytes mismatch)"))
     end
-    version = Base.read(io, UInt8)
-    if version !== StoreVersion
-        throw(CacheCorruptedError("invalid cache file version (read $version, expected $StoreVersion)"))
+    version = Base.read(io, length(StoreVersion))
+    if version != StoreVersion
+        throw(CacheCorruptedError("invalid cache file version (read $(bytes2hex(version)), expected $(bytes2hex(StoreVersion)))"))
     end
 end
 

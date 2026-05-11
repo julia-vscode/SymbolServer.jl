@@ -542,19 +542,18 @@ end
     # Round-trip: written stream begins with magic + version
     io = IOBuffer()
     write(io, VarRef(nothing, :foo))
-    bytes = take!(io)
-    @test length(bytes) >= 2
-    @test bytes[1] === MagicHeader
-    @test bytes[2] === StoreVersion
+    seekstart(io)
+    @test MagicHeader == Base.read(io, length(MagicHeader))
+    @test StoreVersion == Base.read(io, length(StoreVersion))
 
     # Wrong magic byte → rejected
-    @test_throws CacheCorruptedError read(IOBuffer(UInt8[0x00, StoreVersion]))
+    @test_throws CacheCorruptedError read(IOBuffer(vcat(UInt8[0x00], StoreVersion)))
 
     # Right magic, wrong version → rejected
-    @test_throws CacheCorruptedError read(IOBuffer(UInt8[MagicHeader, 0xff]))
+    @test_throws CacheCorruptedError read(IOBuffer(vcat(MagicHeader, UInt8[0xff])))
 
     # Truncated header (only magic, no version) → rejected
-    @test_throws CacheCorruptedError read(IOBuffer(UInt8[MagicHeader]))
+    @test_throws CacheCorruptedError read(IOBuffer(MagicHeader))
 end
 
 @testitem "CacheStore rejects unknown header" begin
@@ -564,13 +563,13 @@ end
     @test_throws CacheCorruptedError read(IOBuffer(UInt8[0xff]))
 
     # Valid magic + version, but unknown record tag → rejected by dispatch
-    @test_throws CacheCorruptedError read(IOBuffer(UInt8[MagicHeader, StoreVersion, 0xff]))
+    @test_throws CacheCorruptedError read(IOBuffer(vcat(MagicHeader, StoreVersion, UInt8[0xff])))
 end
 
 @testitem "CacheStore rejects truncated stream" begin
     using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
 
-    prefix = UInt8[MagicHeader, StoreVersion]
+    prefix = vcat(MagicHeader, StoreVersion)
 
     # SymbolHeader (0x02) + length=100, but only 5 payload bytes
     io = IOBuffer(vcat(prefix, UInt8[0x02], reinterpret(UInt8, [Int(100)]), UInt8[0x41, 0x41, 0x41, 0x41, 0x41]))
@@ -586,7 +585,7 @@ end
 @testitem "CacheStore rejects oversized length fields" begin
     using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
 
-    prefix = UInt8[MagicHeader, StoreVersion]
+    prefix = vcat(MagicHeader, StoreVersion)
 
     # SymbolHeader (0x02) + length=10^15 in a 9-byte stream → way over remaining bytes
     huge = Int(10)^15
@@ -658,7 +657,7 @@ end
         return bytes
     end
 
-    prefix = UInt8[MagicHeader, StoreVersion]
+    prefix = vcat(MagicHeader, StoreVersion)
 
     # 300 levels exceeds MAX_DEPTH=256
     bytes = nested_bytes(300)
