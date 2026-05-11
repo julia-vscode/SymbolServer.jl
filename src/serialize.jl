@@ -28,7 +28,9 @@ const TupleHeader = 0x14
 const FakeTypeofVarargHeader = 0x15
 const UndefHeader = 0x16
 
-const MagicHeader = b"jstore\0"
+# reserve 0x00-0xfe for type headers and indicate that this file is binary by not starting
+# with ASCII
+const MagicHeader = b"\xffjstore"
 const StoreVersion = b"\x00\x01"
 
 struct CacheCorruptedError <: Exception

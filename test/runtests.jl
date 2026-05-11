@@ -560,7 +560,7 @@ end
     using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
 
     # Bad magic byte → rejected before tag dispatch
-    @test_throws CacheCorruptedError read(IOBuffer(UInt8[0xff]))
+    @test_throws CacheCorruptedError read(IOBuffer(UInt8[0x00]))
 
     # Valid magic + version, but unknown record tag → rejected by dispatch
     @test_throws CacheCorruptedError read(IOBuffer(vcat(MagicHeader, StoreVersion, UInt8[0xff])))
