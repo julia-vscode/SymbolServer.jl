@@ -201,7 +201,7 @@ end
 
         # Inspect the cached version, and check that the package SHA has been computed
         # correctly.
-        cache_path = joinpath(store_path, "A", "A_94f385dd-073b-49fe-b7ed-f824d09b3331", "v0.1.0_nothing.jstore")
+        cache_path = joinpath(store_path, "A", "A", "94f385dd-073b-49fe-b7ed-f824d09b3331", "0.1.0.jstore")
         @test isfile(cache_path)
 
         cached_version = open(SymbolServer.CacheStore.read, cache_path)
@@ -434,9 +434,9 @@ end
         @test haskey(store, :B)
 
         # Inspect the on-disk cache file directly.
-        cache_path = joinpath(store_path, "B",
-            "B_b8d7f5ca-4a81-4f4a-b8c7-1f4a0d2b3c4e",
-            "v0.1.0_nothing.jstore")
+        cache_path = joinpath(store_path, "B", "B",
+            "b8d7f5ca-4a81-4f4a-b8c7-1f4a0d2b3c4e",
+            "0.1.0.jstore")
         @test isfile(cache_path)
 
         cached = open(SymbolServer.CacheStore.read, cache_path)
@@ -494,16 +494,17 @@ end
         indexpkg = abspath(joinpath(@__DIR__, "..", "src", "indexpackage.jl"))
 
         # ARGS[1..4] = name, version, uuid, treehash; ARGS[5] = store_path.
-        # treehash is "nothing" (matches the literal string the script writes
-        # into the cache filename when no tree hash is available).
-        cmd = `$jl_cmd --project=$project_path --startup-file=no $indexpkg B 0.1.0 b8d7f5ca-4a81-4f4a-b8c7-1f4a0d2b3c4e nothing $store_path`
+        # Empty treehash exercises the no-treehash fallback: the script names
+        # the cache file after the version instead.
+        treehash = ""
+        cmd = `$jl_cmd --project=$project_path --startup-file=no $indexpkg B 0.1.0 b8d7f5ca-4a81-4f4a-b8c7-1f4a0d2b3c4e $treehash $store_path`
         proc = withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
             run(ignorestatus(cmd))
         end
         # The script intentionally exits 37 on success.
         @test proc.exitcode == 37
 
-        cache_path = joinpath(store_path, "v0.1.0_nothing.jstore")
+        cache_path = joinpath(store_path, "0.1.0.jstore")
         @test isfile(cache_path)
 
         cached = open(SymbolServer.CacheStore.read, cache_path)
@@ -672,9 +673,9 @@ end
     using SymbolServer
 
     mktempdir() do store_path
-        pkg_dir = joinpath(store_path, "Bogus", "Bogus_00000000-0000-0000-0000-000000000000")
+        pkg_dir = joinpath(store_path, "B", "Bogus", "00000000-0000-0000-0000-000000000000")
         mkpath(pkg_dir)
-        cache_path = joinpath(pkg_dir, "v0.1.0_nothing.jstore")
+        cache_path = joinpath(pkg_dir, "0.1.0.jstore")
         open(cache_path, "w") do io
             Base.write(io, UInt8[0xff])    # unknown header → CacheCorruptedError
         end
