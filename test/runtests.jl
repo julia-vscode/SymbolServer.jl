@@ -536,6 +536,65 @@ end
     end
 end
 
+@testitem "#161 cross-package overload is captured" begin
+    using Pkg
+    using SymbolServer
+
+    mktempdir() do path
+        cp(joinpath(@__DIR__, "testenv4"), path; force=true)
+
+        project_path = joinpath(path, "proj")
+
+        store_path = joinpath(path, "store")
+        mkpath(store_path)
+
+        jl_cmd = joinpath(Sys.BINDIR, Base.julia_exename())
+        withenv("JULIA_PKG_PRECOMPILE_AUTO" => 0) do
+            run(`$jl_cmd --project=$project_path --startup-file=no -e 'using Pkg; Pkg.instantiate()'`)
+        end
+
+        ssi = SymbolServerInstance("", store_path)
+        ret_status, store = getstore(ssi, project_path; download=false)
+
+        if ret_status == :failure
+            @info String(take!(store))
+        end
+        @test ret_status == :success
+        @test haskey(store, :A)
+        @test haskey(store, :B)
+
+        # A defines `foo(x) = 1` — captured in A's store as-is.
+        @test haskey(store[:A], :foo)
+        a_foo = store[:A][:foo]
+        @test a_foo isa SymbolServer.FunctionStore
+        @test a_foo.name == a_foo.extends
+        @test length(a_foo.methods) == 1
+
+        # B does `import A; A.foo(::Foo) = 2`. Before the fix this overload
+        # could vanish from the cache entirely. It must now appear in B's
+        # store as a FunctionStore that extends A.foo.
+        @test haskey(store[:B], :foo)
+        b_foo = store[:B][:foo]
+        @test b_foo isa SymbolServer.FunctionStore
+        @test b_foo.name != b_foo.extends
+        @test b_foo.name.parent !== nothing
+        @test b_foo.name.parent.name == :B
+        @test b_foo.extends.name == :foo
+        @test b_foo.extends.parent !== nothing
+        @test b_foo.extends.parent.name == :A
+        @test length(b_foo.methods) == 1
+        @test b_foo.methods[1].mod == :B
+
+        # collect_extended_methods should surface B as an overloader of A.foo.
+        exts = SymbolServer.collect_extended_methods(store)
+        @test haskey(exts, b_foo.extends)
+        @test SymbolServer.VarRef(nothing, :B) in exts[b_foo.extends]
+
+        SymbolServer.clear_disc_store(ssi)
+        @test length(readdir(store_path)) == 0
+    end
+end
+
 @testitem "CacheStore validates file header" begin
     using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read, write
     using SymbolServer: VarRef
