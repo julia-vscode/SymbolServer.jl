@@ -306,7 +306,7 @@ function apply_to_everything(f, m = nothing, visited = Base.IdSet{Module}())
         push!(visited, m)
         for s in unsorted_names(m, all = true, imported = true, usings = true)
             (!isdefined(m, s) || s == nameof(m)) && continue
-            x = getfield(m, s)
+            x = invokelatest(getfield, m, s)
             f(x)
             if x isa Module && !in(x, visited)
                 apply_to_everything(f, x, visited)
@@ -327,7 +327,7 @@ function oneverything(f, m = nothing, visited = Base.IdSet{Module}())
         state = nothing
         for s in unsorted_names(m, all = true, imported = true, usings = true)
             !isdefined(m, s) && continue
-            x = getfield(m, s)
+            x = invokelatest(getfield, m, s)
             state = f(m, s, x, state)
             if x isa Module && !in(x, visited)
                 oneverything(f, x, visited)
@@ -419,7 +419,7 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     cache = ModuleStore(m)
     for s in unsorted_names(m, all = true, imported = true, usings = true)
         !isdefined(m, s) && continue
-        x = getfield(m, s)
+        x = invokelatest(getfield, m, s)
         if x isa Module
             if istoplevelmodule(x)
                 cache[s] = VarRef(x)
@@ -432,7 +432,7 @@ function getmoduletree(m::Module, amn, visited = Base.IdSet{Module}())
     end
     for n in amn
         if n !== nameof(m) && isdefined(m, n)
-            x = getfield(m, n)
+            x = invokelatest(getfield, m, n)
             if x isa Module
                 if !haskey(cache, n)
                     cache[n] = VarRef(x)
@@ -459,7 +459,7 @@ function all_names(m, pred, symbols = Set(Symbol[]), seen = Set(Module[]))
     for n in ns
         isdefined(m, n) || continue
         Base.isdeprecated(m, n) && continue
-        val = getfield(m, n)
+        val = invokelatest(getfield, m, n)
         if val isa Module && !(val in seen)
             all_names(val, pred, symbols, seen)
         end
@@ -483,7 +483,7 @@ function symbols(env::EnvStore, m::Union{Module,Nothing} = nothing, allnames::Ba
         ns = all_names(m)
         for s in ns
             !isdefined(m, s) && continue
-            x = getfield(m, s)
+            x = Base.invokelatest(getfield, m, s)
 
             if CORE_BASE_NAMES_CONFUSION && m === Base && isdefined(Core, s) && getfield(Core, s) === x
                 continue
