@@ -14,23 +14,18 @@ struct FakeTypeName
     parameters::Vector{Any}
 end
 
-function FakeTypeName(@nospecialize(x); justname=false)
+function FakeTypeName(@nospecialize(x))
     @static if !(Vararg isa Type)
         x isa typeof(Vararg) && return FakeTypeofVararg(x)
     end
     if x isa DataType
         xname = x.name
-        xnamename = xname.name # necessary but unclear why.
-        if justname
-            FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
-        else
-            # FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), _parameter.(x.parameters))
-            ft = FakeTypeName(VarRef(VarRef(x.name.module), x.name.name), [])
-            for p in x.parameters
-                push!(ft.parameters, _parameter(p))
-            end
-            ft
+        xnamename = xname.name
+        ft = FakeTypeName(VarRef(VarRef(x.name.module), xnamename), [])
+        for p in x.parameters
+            push!(ft.parameters, _parameter(p))
         end
+        ft
     elseif x isa Union
         FakeUnion(x)
     elseif x isa UnionAll
@@ -51,18 +46,18 @@ struct FakeUnion
     a
     b
 end
-FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a, justname=true), FakeTypeName(u.b, justname=true))
+FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a), FakeTypeName(u.b))
 struct FakeTypeVar
     name::Symbol
     lb
     ub
 end
-FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb, justname=true), FakeTypeName(tv.ub, justname=true))
+FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb), FakeTypeName(tv.ub))
 struct FakeUnionAll
     var::FakeTypeVar
     body::Any
 end
-FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body, justname=true))
+FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body))
 
 function _parameter(@nospecialize(p))
     if p isa Union{Int,Symbol,Bool,Char}
@@ -72,7 +67,7 @@ function _parameter(@nospecialize(p))
     elseif p isa Tuple
         _parameter.(p)
     else
-        FakeTypeName(p, justname=true)
+        FakeTypeName(p)
     end
 end
 
@@ -88,7 +83,12 @@ function Base.show(io::IO, tn::FakeTypeName)
         print(io, "}")
     end
 end
-Base.show(io::IO, x::FakeUnionAll) = print(io, x.body, " where ", x.var)
+function Base.show(io::IO, x::FakeUnionAll)
+    vars = get(io, :_fake_unionall_vars, Symbol[])::Vector{Symbol}
+    body_io = IOContext(io, :_fake_unionall_vars => push!(copy(vars), x.var.name))
+    print(body_io, x.body)
+    print(io, " where ", x.var)
+end
 function Base.show(io::IO, x::FakeUnion; inunion=false)
     !inunion && print(io, "Union{")
     print(io, x.a, ",")
@@ -99,7 +99,9 @@ function Base.show(io::IO, x::FakeUnion; inunion=false)
     end
 end
 function Base.show(io::IO, x::FakeTypeVar)
-    if isfakebottom(x.lb)
+    if x.name in get(io, :_fake_unionall_vars, Symbol[])::Vector{Symbol}
+        print(io, x.name)
+    elseif isfakebottom(x.lb)
         if isfakeany(x.ub)
             print(io, x.name)
         else
@@ -144,9 +146,9 @@ Base.hash(::FakeTypeofBottom, h::UInt) = hash(:FakeTypeofBottom, h)
     function FakeTypeofVararg(va::typeof(Vararg))
         if isdefined(va, :N)
             vaN = va.N isa TypeVar ? FakeTypeVar(va.N) : va.N
-            FakeTypeofVararg(FakeTypeName(va.T; justname=true), vaN) # This should be FakeTypeName(va.N) but seems to crash inference.
+            FakeTypeofVararg(FakeTypeName(va.T), vaN) # This should be FakeTypeName(va.N) but seems to crash inference.
         elseif isdefined(va, :T)
-            FakeTypeofVararg(FakeTypeName(va.T; justname=true))
+            FakeTypeofVararg(FakeTypeName(va.T))
         else
             FakeTypeofVararg()
         end
