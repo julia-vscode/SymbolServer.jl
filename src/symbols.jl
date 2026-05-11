@@ -239,8 +239,32 @@ function cache_methods(@nospecialize(f), name, env, get_return_type; min_world::
         # Get signature
         sig = Base.unwrap_unionall(m[1])
         argnames = getargnames(m[3])
-        for i = 2:m[3].nargs
+
+        is_vararg = m[3].isva
+        nargs = m[3].nargs - (1 & is_vararg)
+        nsigparams = length(sig.parameters)
+
+        for i = 2:nargs
             push!(MS.sig, argnames[i] => FakeTypeName(sig.parameters[i]))
+        end
+
+        # Julia normalises bounded `Vararg{T,N}` away from the tuple type:
+        # `f(x::Vararg{T,N})` becomes `Tuple{typeof(f), T, T, …, T}` (N
+        # copies) while `m.nargs` keeps counting the slot. For N=0 the
+        # trailing slot disappears entirely and a naive `2:nargs` loop
+        # walks past `sig.parameters` (BoundsError). Reconstruct
+        # `Vararg{T,N}` from the expansion so the cached sig matches the
+        # method as written. See julia-vscode/SymbolServer.jl#295.
+        if is_vararg && nargs < nsigparams
+            last_param = sig.parameters[end]
+            if last_param isa Core.TypeofVararg
+                # Unbounded `Vararg{T}` or `Vararg{T,N} where N` survives in the tuple.
+                push!(MS.sig, argnames[nargs + 1] => FakeTypeName(last_param))
+            else
+                T = sig.parameters[nargs + 1]
+                N = nsigparams - nargs
+                push!(MS.sig, argnames[nargs + 1] => FakeTypeName(Vararg{T, N}))
+            end
         end
         kws = getkws(m[3])
         if !isempty(kws)
