@@ -65,7 +65,7 @@ struct DataTypeStore <: SymStore
     exported::Bool
     function DataTypeStore(names, super, parameters, fieldtypes, fieldnames, methods, doc, exported)
         if length(fieldtypes) < length(fieldnames)
-            append!(fieldtypes, [Any for _ in 1:(length(fieldnames)-length(fieldtypes))])
+            append!(fieldtypes, [FakeTypeName(Any) for _ in 1:(length(fieldnames)-length(fieldtypes))])
         end
         new(names, super, parameters, fieldtypes, fieldnames, methods, doc, exported)
     end
@@ -80,14 +80,16 @@ function DataTypeStore(@nospecialize(t), symbol, parent_mod, exported)
     else
         []
     end
-    types = if isdefined(ur_t, :types)
-        map(ur_t.types) do p
-            FakeTypeName(p)
-        end
+    has_fields = isconcretetype(ur_t) && fieldcount(ur_t) > 0
+    types = if has_fields
+        Any[FakeTypeName(p) for p in Base.fieldtypes(ur_t)]
+    elseif isdefined(ur_t, :types)
+        map(FakeTypeName, ur_t.types)
     else
         []
     end
-    DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, isconcretetype(ur_t) && fieldcount(ur_t) > 0 ? collect(fieldnames(ur_t)) : Symbol[], MethodStore[], _doc(parent_mod, symbol), exported)
+    fieldnames = has_fields ? collect(Base.fieldnames(ur_t)) : Symbol[]
+    DataTypeStore(FakeTypeName(ur_t), FakeTypeName(ur_t.super), parameters, types, fieldnames, MethodStore[], _doc(parent_mod, symbol), exported)
 end
 
 function Base.show(io::IO, dts::DataTypeStore)

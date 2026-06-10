@@ -746,6 +746,33 @@ end
     @test_throws ArgumentError write(io, deep)
 end
 
+@testitem "#1395 DataTypeStore field types are serializable and aligned" begin
+    using SymbolServer: DataTypeStore, FakeTypeName, MethodStore
+    using SymbolServer.CacheStore: write, read
+
+    for T in (MethodStore, DataTypeStore, Pair{Int,String}, Dict{Symbol,Any})
+        ur = Base.unwrap_unionall(T)
+        d = DataTypeStore(T, nameof(ur), @__MODULE__, false)
+        @test length(d.types) == length(d.fieldnames) == fieldcount(ur)
+        @test !any(t -> t isa Type, d.types)        # no raw types leaked in
+        io = IOBuffer(); write(io, d); seekstart(io); read(io)   # must round-trip
+    end
+
+    dts = DataTypeStore(
+        FakeTypeName(Int), FakeTypeName(Integer),
+        Any[],                  # parameters
+        Any[],                  # fieldtypes (shorter than fieldnames -> padded)
+        Any[:a, :b],            # fieldnames
+        MethodStore[], "", false,
+    )
+    @test length(dts.types) == 2
+    @test all(t -> t isa FakeTypeName, dts.types)   # padded, not raw `Any`
+    io = IOBuffer(); write(io, dts); seekstart(io)  # must not throw
+    back = read(io)
+    @test length(back.types) == 2
+    @test back.fieldnames == [:a, :b]
+end
+
 @testitem "CacheStore rejects deeply nested input on read" begin
     using SymbolServer.CacheStore: CacheCorruptedError, MagicHeader, StoreVersion, read
 
