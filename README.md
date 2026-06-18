@@ -5,6 +5,8 @@
 ![](https://github.com/julia-vscode/SymbolServer.jl/workflows/Run%20CI%20on%20master/badge.svg)
 [![codecov.io](http://codecov.io/github/julia-vscode/SymbolServer.jl/coverage.svg?branch=master)](http://codecov.io/github/julia-vscode/SymbolServer.jl?branch=master)
 
+THE FUNCTIONALITY OF THIS PACKAGE HAS BEEN MOVED TO [JuliaWorkspaces.jl](https://github.com/julia-vscode/JuliaWorkspaces.jl). THIS PACKAGE HERE IS NO LONGER BEING MAINTAINED.
+
 SymbolServer is a helper package for LanguageServer.jl that provides information about internal and exported variables of packages (without loading them). A package's symbol information is initially loaded in an external process but then stored on disc for (quick loading) future use.
 
 ## Installation and Usage
