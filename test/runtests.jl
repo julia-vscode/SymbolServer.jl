@@ -280,6 +280,26 @@ end
     end
 end
 
+@testitem "recursive type parameters are bounded" begin
+    using SymbolServer: FakeTypeName, ExpandBudget
+
+    # Number of DataTypes that were expanded (i.e. kept their parameters).
+    expanded(x) = x isa FakeTypeName && !isempty(x.parameters) ? 1 + sum(expanded, x.parameters) : 0
+
+    limit = 8
+    deep = foldl((T, _) -> Tuple{T}, 1:100; init = Int)   # Tuple{Tuple{…{Int}}}
+    wide = Tuple{ntuple(i -> Val{i}, 100)...}              # Tuple{Val{1},…,Val{100}}
+
+    # However a type explodes — by depth or by width — expansion stops at the budget.
+    for T in (deep, wide)
+        @test expanded(FakeTypeName(T, ExpandBudget(limit))) <= limit
+    end
+
+    # An ordinary type has far fewer nodes than the budget, so nothing is dropped.
+    ordinary = Dict{String,Vector{Tuple{Int,Float64}}}
+    @test FakeTypeName(ordinary, ExpandBudget(limit)) == FakeTypeName(ordinary)
+end
+
 @testitem "Pipe names" begin
     import UUIDs
 

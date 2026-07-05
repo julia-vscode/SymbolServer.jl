@@ -14,24 +14,44 @@ struct FakeTypeName
     parameters::Vector{Any}
 end
 
-function FakeTypeName(@nospecialize(x))
+# Type parameters are expanded recursively so cached signatures keep their
+# structure, but a few types expand into huge trees — type-domain packages
+# whose types recurse into themselves (naturals as nested `NonnegativeInteger`,
+# rationals as continued fractions), and even some Base/LinearAlgebra
+# signatures whose `where`-bounded `Union`s reach tens of thousands of nodes —
+# which unbounded would produce multi-gigabyte caches that exhaust memory on
+# read. To prevent that, `budget` caps how many `DataType`s are expanded while
+# building one type: once it is spent the remaining parameters are dropped,
+# keeping only their names. The limit sits far above any ordinary type, so only
+# these outliers are truncated; the serializer's own MAX_DEPTH guard is a
+# separate cycle check, not a size bound.
+const MAX_EXPANDED_TYPES = 128
+
+mutable struct ExpandBudget
+    remaining::Int
+end
+ExpandBudget() = ExpandBudget(MAX_EXPANDED_TYPES)
+
+function FakeTypeName(@nospecialize(x), budget::ExpandBudget=ExpandBudget())
     @static if !(Vararg isa Type)
         x isa typeof(Vararg) && return FakeTypeofVararg(x)
     end
     if x isa DataType
         xname = x.name
-        xnamename = xname.name
-        ft = FakeTypeName(VarRef(VarRef(x.name.module), xnamename), [])
-        for p in x.parameters
-            push!(ft.parameters, _parameter(p))
+        ft = FakeTypeName(VarRef(VarRef(xname.module), xname.name), [])
+        if budget.remaining > 0
+            budget.remaining -= 1
+            for p in x.parameters
+                push!(ft.parameters, _parameter(p, budget))
+            end
         end
         ft
     elseif x isa Union
-        FakeUnion(x)
+        FakeUnion(x, budget)
     elseif x isa UnionAll
-        FakeUnionAll(x)
+        FakeUnionAll(x, budget)
     elseif x isa TypeVar
-        FakeTypeVar(x)
+        FakeTypeVar(x, budget)
     elseif x isa Core.TypeofBottom
         FakeTypeofBottom()
     elseif x isa Module
@@ -46,28 +66,28 @@ struct FakeUnion
     a
     b
 end
-FakeUnion(u::Union) = FakeUnion(FakeTypeName(u.a), FakeTypeName(u.b))
+FakeUnion(u::Union, budget::ExpandBudget=ExpandBudget()) = FakeUnion(FakeTypeName(u.a, budget), FakeTypeName(u.b, budget))
 struct FakeTypeVar
     name::Symbol
     lb
     ub
 end
-FakeTypeVar(tv::TypeVar) = FakeTypeVar(tv.name, FakeTypeName(tv.lb), FakeTypeName(tv.ub))
+FakeTypeVar(tv::TypeVar, budget::ExpandBudget=ExpandBudget()) = FakeTypeVar(tv.name, FakeTypeName(tv.lb, budget), FakeTypeName(tv.ub, budget))
 struct FakeUnionAll
     var::FakeTypeVar
     body::Any
 end
-FakeUnionAll(ua::UnionAll) = FakeUnionAll(FakeTypeVar(ua.var), FakeTypeName(ua.body))
+FakeUnionAll(ua::UnionAll, budget::ExpandBudget=ExpandBudget()) = FakeUnionAll(FakeTypeVar(ua.var, budget), FakeTypeName(ua.body, budget))
 
-function _parameter(@nospecialize(p))
+function _parameter(@nospecialize(p), budget::ExpandBudget=ExpandBudget())
     if p isa Union{Int,Symbol,Bool,Char}
         p
     elseif !(p isa Type) && isbitstype(typeof(p))
         0
     elseif p isa Tuple
-        _parameter.(p)
+        _parameter.(p, Ref(budget))
     else
-        FakeTypeName(p)
+        FakeTypeName(p, budget)
     end
 end
 
